@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Principal;
 using System.Text.Json;
 using MaterialPro.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -25,18 +26,22 @@ public sealed class ServerDashboardForm : Form
     private readonly Label _clientVersion = ValueLabel(13);
     private readonly Label _serverVersion = ValueLabel(13);
     private readonly Label _installPath = new() { Dock = DockStyle.Fill, ForeColor = Muted, AutoEllipsis = true };
+    private readonly Label _adminStatus = new() { Dock = DockStyle.Bottom, Height = 28, ForeColor = Muted, AutoEllipsis = true };
     private readonly TextBox _logBox = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White, BorderStyle = BorderStyle.None, Font = new Font("Consolas", 10F) };
     private readonly PerformanceTile _memoryTile = new("Memoria do Windows", Green);
     private readonly PerformanceTile _cpuTile = new("CPU do servidor", Blue);
     private readonly PerformanceTile _diskTile = new("Disco do sistema", Orange);
     private readonly PerformanceTile _processTile = new("MaterialPro em RAM", Navy);
+    private readonly BackupModuleService _backupService = new();
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 5000 };
+    private readonly string _connectionString;
     private TimeSpan _lastCpuTime = Process.GetCurrentProcess().TotalProcessorTime;
     private DateTime _lastCpuAt = DateTime.UtcNow;
 
     public ServerDashboardForm(MaterialProDbContext db)
     {
         _db = db;
+        _connectionString = MaterialProSettingsLoader.Load(AppContext.BaseDirectory).ConnectionString;
         Text = "MaterialPro - Painel do Servidor";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1080, 780);
@@ -81,9 +86,10 @@ public sealed class ServerDashboardForm : Form
 
     private Control BuildContent()
     {
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 5 };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 6 };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 226));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -97,16 +103,17 @@ public sealed class ServerDashboardForm : Form
         root.Controls.Add(metrics, 0, 0);
 
         root.Controls.Add(BuildPerformancePanel(), 0, 1);
+        root.Controls.Add(BuildAdminPanel(), 0, 2);
 
         var versions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
         versions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         versions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         versions.Controls.Add(InfoCard("Cliente instalado", _clientVersion, "Versao publicada no GitHub e pacote de update do cliente.", Blue), 0, 0);
         versions.Controls.Add(InfoCard("Servidor instalado", _serverVersion, "Versao publicada no GitHub e pacote de update do servidor.", Orange), 1, 0);
-        root.Controls.Add(versions, 0, 2);
+        root.Controls.Add(versions, 0, 3);
 
-        root.Controls.Add(BuildPathCard(), 0, 3);
-        root.Controls.Add(BuildLogCard(), 0, 4);
+        root.Controls.Add(BuildPathCard(), 0, 4);
+        root.Controls.Add(BuildLogCard(), 0, 5);
         return root;
     }
 
@@ -131,6 +138,41 @@ public sealed class ServerDashboardForm : Form
         grid.Controls.Add(_processTile, 3, 0);
 
         panel.Controls.Add(grid);
+        panel.Controls.Add(header);
+        return panel;
+    }
+
+    private Control BuildAdminPanel()
+    {
+        var panel = Card(Orange);
+        panel.Padding = new Padding(20, 14, 20, 16);
+        var header = new Label
+        {
+            Text = "Administracao rapida",
+            Dock = DockStyle.Top,
+            Height = 28,
+            ForeColor = Ink,
+            Font = new Font("Segoe UI", 12F, FontStyle.Bold)
+        };
+
+        var subtitle = new Label
+        {
+            Text = "Operacoes protegidas: update forcado, backup geral e restauracao do sistema.",
+            Dock = DockStyle.Top,
+            Height = 26,
+            ForeColor = Muted
+        };
+
+        var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, Padding = new Padding(0, 8, 0, 0) };
+        for (var i = 0; i < 4; i++) actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        actions.Controls.Add(ActionButton("Forcar update servidor", "Baixa do GitHub e aplica no servidor", Orange, (_, _) => ForceUpdate("server")), 0, 0);
+        actions.Controls.Add(ActionButton("Forcar update cliente", "Baixa o pacote do computador cliente", Blue, (_, _) => ForceUpdate("client")), 1, 0);
+        actions.Controls.Add(ActionButton("Backup geral", "Cria ZIP com arquivos e banco MySQL", Green, async (_, _) => await CreateFullBackup()), 2, 0);
+        actions.Controls.Add(ActionButton("Restaurar backup", "Escolhe ZIP e recupera banco/arquivos", Brick, async (_, _) => await RestoreBackup()), 3, 0);
+
+        panel.Controls.Add(actions);
+        panel.Controls.Add(_adminStatus);
+        panel.Controls.Add(subtitle);
         panel.Controls.Add(header);
         return panel;
     }
@@ -176,6 +218,10 @@ public sealed class ServerDashboardForm : Form
         _clientVersion.Text = $"{client.LocalVersion} -> GitHub {client.RemoteVersion}";
         _serverVersion.Text = $"{server.LocalVersion} -> GitHub {server.RemoteVersion}";
         _installPath.Text = AppContext.BaseDirectory;
+        _adminStatus.Text = IsAdministrator()
+            ? "Painel aberto como Administrador. Acoes sensiveis liberadas."
+            : "Abra como Administrador para executar update forcado, backup completo e restauracao.";
+        _adminStatus.ForeColor = IsAdministrator() ? Green : Brick;
 
         var diagnostics = ReadDiagnostics();
         _logBox.Text = diagnostics.Length > 0
@@ -183,6 +229,149 @@ public sealed class ServerDashboardForm : Form
             : $"Servidor iniciado em modo painel.{Environment.NewLine}Ultima verificacao: {DateTime.Now:dd/MM/yyyy HH:mm:ss}";
 
         RefreshPerformance();
+    }
+
+    private void ForceUpdate(string channel)
+    {
+        if (!EnsureAdministrator("forcar atualizacao"))
+        {
+            return;
+        }
+
+        var label = channel.Equals("server", StringComparison.OrdinalIgnoreCase) ? "servidor" : "cliente";
+        if (MessageBox.Show(this, $"Forcar update do {label} agora?", "Atualizacao forcada", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+        {
+            return;
+        }
+
+        var started = AutoUpdateRunner.StartForcedUpdate(channel);
+        _logBox.Text = started
+            ? $"Update forcado do {label} iniciado como administrador. Aguarde o processo terminar."
+            : $"Nao foi possivel iniciar update forcado do {label}. Verifique se o updater existe.";
+    }
+
+    private async Task CreateFullBackup()
+    {
+        if (!EnsureAdministrator("fazer backup geral"))
+        {
+            return;
+        }
+
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "Escolha onde salvar o backup geral do MaterialPro",
+            UseDescriptionForTitle = true,
+            SelectedPath = _backupService.DefaultDestinationFolder()
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        _logBox.Text = "Gerando backup geral. Aguarde...";
+        UseWaitCursor = true;
+        try
+        {
+            var request = new BackupRequest(AppContext.BaseDirectory, dialog.SelectedPath, _connectionString, IncludeFiles: true, IncludeDatabase: true);
+            var result = await Task.Run(() => _backupService.CreateBackup(request));
+            _logBox.Text = $"{result.Message}\r\n\r\nArquivo:\r\n{result.BackupPath}\r\n\r\nArquivos: {YesNo(result.FilesIncluded)}\r\nBanco MySQL: {YesNo(result.DatabaseIncluded)}\r\nRelatorio: {result.LogPath}";
+            MessageBox.Show(this, result.Message, "Backup geral", MessageBoxButtons.OK, result.Success ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            if (File.Exists(result.BackupPath))
+            {
+                OpenFolder(Path.GetDirectoryName(result.BackupPath)!);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logBox.Text = $"Falha ao gerar backup geral: {ex.Message}";
+            MessageBox.Show(this, "Nao foi possivel gerar o backup.", "Backup geral", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+        }
+    }
+
+    private async Task RestoreBackup()
+    {
+        if (!EnsureAdministrator("restaurar backup"))
+        {
+            return;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Escolha o backup ZIP do MaterialPro",
+            Filter = "Backup MaterialPro (*.zip)|*.zip|Todos os arquivos (*.*)|*.*",
+            InitialDirectory = Directory.Exists(_backupService.DefaultDestinationFolder()) ? _backupService.DefaultDestinationFolder() : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            this,
+            "Restaurar backup pode substituir dados do banco e arquivos do servidor. Confirma restaurar agora?",
+            "Restaurar backup",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+        if (confirm != DialogResult.Yes)
+        {
+            return;
+        }
+
+        _logBox.Text = "Restaurando backup. Aguarde...";
+        UseWaitCursor = true;
+        try
+        {
+            var request = new RestoreBackupRequest(dialog.FileName, AppContext.BaseDirectory, _connectionString, RestoreFiles: true, RestoreDatabase: true);
+            var result = await Task.Run(() => _backupService.RestoreBackup(request));
+            _logBox.Text = $"{result.Message}\r\n\r\nArquivos restaurados: {YesNo(result.FilesRestored)}\r\nBanco restaurado: {YesNo(result.DatabaseRestored)}\r\n\r\n{result.Log}";
+            MessageBox.Show(this, result.Message, "Restaurar backup", MessageBoxButtons.OK, result.Success ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            RefreshStatus();
+        }
+        catch (Exception ex)
+        {
+            _logBox.Text = $"Falha ao restaurar backup: {ex.Message}";
+            MessageBox.Show(this, "Nao foi possivel restaurar o backup.", "Restaurar backup", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+        }
+    }
+
+    private bool EnsureAdministrator(string action)
+    {
+        if (IsAdministrator())
+        {
+            return true;
+        }
+
+        var answer = MessageBox.Show(this, $"Para {action}, abra o painel como Administrador. Deseja reabrir agora?", "Permissao de administrador", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (answer != DialogResult.Yes)
+        {
+            return false;
+        }
+
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(exe) && File.Exists(exe))
+            {
+                Process.Start(new ProcessStartInfo { FileName = exe, UseShellExecute = true, Verb = "runas", WorkingDirectory = AppContext.BaseDirectory });
+                Close();
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Nao foi possivel reabrir como Administrador: {ex.Message}", "Permissao de administrador", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        return false;
     }
 
     private void RefreshPerformance()
@@ -315,6 +504,34 @@ Erro: {error}
         button.Click += click;
         return button;
     }
+
+    private static Button ActionButton(string title, string subtitle, Color color, EventHandler click)
+    {
+        var button = new Button
+        {
+            Text = $"{title}\r\n{subtitle}",
+            Dock = DockStyle.Fill,
+            BackColor = color,
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+            Padding = new Padding(14, 6, 10, 6),
+            Margin = new Padding(0, 0, 12, 0)
+        };
+        button.FlatAppearance.BorderSize = 0;
+        button.Click += click;
+        return button;
+    }
+
+    private static bool IsAdministrator()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var principal = new WindowsPrincipal(identity);
+        return principal.IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    private static string YesNo(bool value) => value ? "Sim" : "Nao";
 
     private static void OpenFolder(string path)
     {
