@@ -1,6 +1,8 @@
 # MaterialPro Updates
 
-Arquivos de atualizacao gerados em 2026-06-18 14:55.
+Arquivos de atualizacao gerados em 2026-06-18 15:06.
+
+Versao publicada: 2026.06.18.1506.
 
 Inclui:
 - modulo de impressoras corrigido
@@ -10,6 +12,7 @@ Inclui:
 - painel principal visualmente ajustado para rotina de loja de material de construcao
 - update exe agora mira automaticamente em C:\Program Files\MaterialPro\Client ou C:\Program Files\MaterialPro\Server conforme o canal
 - central de atualizacoes mostra versao correta, conexao cliente-servidor, banco de dados e botao administrativo para forcar update
+- painel inicial mostra Cliente, Servidor, Rede/Banco e Administrador com acesso rapido para diagnosticar e forcar instalar/update
 
 Cliente:
 - updates/client/MaterialProClientUpdate.exe
