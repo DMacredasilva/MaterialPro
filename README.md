@@ -1,8 +1,8 @@
 # MaterialPro Updates
 
-Arquivos de atualizacao gerados em 2026-06-18 15:37.
+Arquivos de atualizacao gerados em 2026-06-18 15:46.
 
-Versao publicada: 2026.06.18.1537.
+Versao publicada: 2026.06.18.1546.
 
 Inclui:
 - modulo de impressoras corrigido
@@ -18,6 +18,8 @@ Inclui:
 - central de atualizacoes responsiva, com versao instalada e versao publicada no GitHub sem texto sobreposto
 - consulta de versao no GitHub com fallback para redes que bloqueiam a API
 - botao Forcar instalar/update do cliente baixa o pacote mais novo do GitHub, fecha o MaterialPro e reinstala por cima
+- modulo de cupons, recibos e documentos em portugues com modelos editaveis/importaveis pelo administrador e previa responsiva
+- tela Dados da loja com previa da logo sem distorcer e copia da imagem para pasta estavel do MaterialPro
 
 Cliente:
 - updates/client/MaterialProClientUpdate.exe
