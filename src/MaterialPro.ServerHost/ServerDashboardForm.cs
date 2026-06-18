@@ -93,10 +93,14 @@ public sealed class ServerDashboardForm : Form
         };
 
         var menu = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(0, 24, 0, 0) };
-        foreach (var item in new[] { "Dashboard", "Banco de Dados", "Backups", "Atualizacoes", "Logs", "Diagnosticos", "Seguranca", "Suporte" })
-        {
-            menu.Controls.Add(SidebarItem(item, item == "Dashboard"));
-        }
+        menu.Controls.Add(SidebarItem("Dashboard", true, (_, _) => RefreshStatus()));
+        menu.Controls.Add(SidebarItem("Banco de Dados", false, (_, _) => FocusLog("Banco de Dados", ReadDiagnostics())));
+        menu.Controls.Add(SidebarItem("Backups", false, async (_, _) => await CreateFullBackup()));
+        menu.Controls.Add(SidebarItem("Atualizacoes", false, (_, _) => ForceUpdate("server")));
+        menu.Controls.Add(SidebarItem("Logs", false, (_, _) => FocusLog("Logs do sistema", ReadLogFiles())));
+        menu.Controls.Add(SidebarItem("Diagnosticos", false, (_, _) => FocusLog("Diagnosticos", ReadDiagnostics())));
+        menu.Controls.Add(SidebarItem("Seguranca", false, (_, _) => FocusLog("Seguranca", IsAdministrator() ? "Painel aberto como Administrador." : "Abra como Administrador para operacoes sensiveis.")));
+        menu.Controls.Add(SidebarItem("Suporte", false, (_, _) => OpenFolder(AppContext.BaseDirectory)));
 
         panel.Controls.Add(menu);
         panel.Controls.Add(footer);
@@ -113,28 +117,33 @@ public sealed class ServerDashboardForm : Form
 
     private Control BuildHeader()
     {
-        var panel = new Panel { Dock = DockStyle.Top, Height = 118, Padding = new Padding(24, 18, 24, 12), BackColor = Surface };
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 480, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
-        actions.Controls.Add(Button("Fechar painel", Brick, (_, _) => Close(), 130));
-        actions.Controls.Add(Button("Atualizar", Blue, (_, _) => RefreshStatus(), 120));
-        actions.Controls.Add(Button("Abrir pasta", Green, (_, _) => OpenFolder(AppContext.BaseDirectory), 120));
-        panel.Controls.Add(actions);
+        var panel = new TableLayoutPanel { Dock = DockStyle.Top, Height = 118, Padding = new Padding(24, 18, 24, 12), BackColor = Surface, ColumnCount = 2, RowCount = 1 };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 440));
 
-        panel.Controls.Add(new Label
-        {
-            Text = "Painel do Servidor",
-            Dock = DockStyle.Top,
-            Height = 42,
-            Font = new Font("Segoe UI", 22F, FontStyle.Bold),
-            ForeColor = Ink
-        });
-        panel.Controls.Add(new Label
+        var text = new Panel { Dock = DockStyle.Fill, BackColor = Surface };
+        text.Controls.Add(new Label
         {
             Text = "Acompanhe banco de dados, atualizacao, instalacao e diagnosticos do MaterialPro.",
             Dock = DockStyle.Bottom,
-            Height = 28,
+            Height = 32,
             ForeColor = Muted
         });
+        text.Controls.Add(new Label
+        {
+            Text = "Painel do Servidor",
+            Dock = DockStyle.Top,
+            Height = 46,
+            Font = new Font("Segoe UI", 22F, FontStyle.Bold),
+            ForeColor = Ink
+        });
+
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Padding = new Padding(0, 18, 0, 0), BackColor = Surface };
+        actions.Controls.Add(Button("Fechar", Brick, (_, _) => Close(), 112));
+        actions.Controls.Add(Button("Atualizar", Blue, (_, _) => RefreshStatus(), 112));
+        actions.Controls.Add(Button("Abrir pasta", Green, (_, _) => OpenFolder(AppContext.BaseDirectory), 126));
+        panel.Controls.Add(text, 0, 0);
+        panel.Controls.Add(actions);
         return panel;
     }
 
@@ -143,7 +152,7 @@ public sealed class ServerDashboardForm : Form
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 6, BackColor = Surface };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 226));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 178));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -217,7 +226,7 @@ public sealed class ServerDashboardForm : Form
             ForeColor = Muted
         };
 
-        var actions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, Padding = new Padding(0, 8, 0, 0) };
+        var actions = new TableLayoutPanel { Dock = DockStyle.Top, Height = 74, ColumnCount = 4, Padding = new Padding(0, 8, 0, 0) };
         for (var i = 0; i < 4; i++) actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
         actions.Controls.Add(ActionButton("Forcar update servidor", "Baixa do GitHub e aplica no servidor", Orange, (_, _) => ForceUpdate("server")), 0, 0);
         actions.Controls.Add(ActionButton("Forcar update cliente", "Baixa o pacote do computador cliente", Blue, (_, _) => ForceUpdate("client")), 1, 0);
@@ -501,6 +510,38 @@ Erro: {error}
         }
     }
 
+    private void FocusLog(string title, string content)
+    {
+        _logBox.Text = string.IsNullOrWhiteSpace(content)
+            ? $"{title}{Environment.NewLine}Nenhuma informacao encontrada."
+            : $"{title}{Environment.NewLine}{Environment.NewLine}{content}";
+        _logBox.Focus();
+    }
+
+    private static string ReadLogFiles()
+    {
+        var logsRoot = Path.Combine(AppContext.BaseDirectory, "logs");
+        if (!Directory.Exists(logsRoot))
+        {
+            return "Pasta de logs nao encontrada.";
+        }
+
+        var files = Directory.GetFiles(logsRoot, "*.*", SearchOption.TopDirectoryOnly)
+            .OrderByDescending(File.GetLastWriteTime)
+            .Take(5)
+            .ToArray();
+        if (files.Length == 0)
+        {
+            return "Nenhum log encontrado.";
+        }
+
+        return string.Join(Environment.NewLine, files.Select(file =>
+        {
+            var info = new FileInfo(file);
+            return $"{info.LastWriteTime:dd/MM/yyyy HH:mm:ss}  {info.Name}  {FormatBytes(info.Length)}";
+        }));
+    }
+
     private static Panel MetricCard(string title, Label value, Color accent)
     {
         var panel = Card(accent);
@@ -562,7 +603,7 @@ Erro: {error}
         return button;
     }
 
-    private static Button SidebarItem(string text, bool active)
+    private static Button SidebarItem(string text, bool active, EventHandler click)
     {
         var button = new Button
         {
@@ -577,25 +618,18 @@ Erro: {error}
             Margin = new Padding(0, 0, 0, 8)
         };
         button.FlatAppearance.BorderSize = 0;
+        button.FlatAppearance.MouseOverBackColor = active ? Blue : Color.FromArgb(20, 45, 70);
+        button.Click += click;
         return button;
     }
 
     private static Button ActionButton(string title, string subtitle, Color color, EventHandler click)
     {
-        var button = new Button
+        var button = new AdminActionButton(title, subtitle, color)
         {
-            Text = $"{title}\r\n{subtitle}",
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(38, color),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
-            Padding = new Padding(14, 6, 10, 6),
             Margin = new Padding(0, 0, 12, 0)
         };
-        button.FlatAppearance.BorderSize = 1;
-        button.FlatAppearance.BorderColor = Color.FromArgb(70, color);
         button.Click += click;
         return button;
     }
@@ -608,6 +642,46 @@ Erro: {error}
     }
 
     private static string YesNo(bool value) => value ? "Sim" : "Nao";
+
+    private sealed class AdminActionButton : Button
+    {
+        private readonly string _title;
+        private readonly string _subtitle;
+        private readonly Color _accent;
+
+        public AdminActionButton(string title, string subtitle, Color accent)
+        {
+            _title = title;
+            _subtitle = subtitle;
+            _accent = accent;
+            Text = string.Empty;
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            BackColor = Color.FromArgb(38, accent);
+            ForeColor = Color.White;
+            Cursor = Cursors.Hand;
+            DoubleBuffered = true;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var fill = new SolidBrush(BackColor);
+            g.FillRectangle(fill, ClientRectangle);
+            using var border = new Pen(Color.FromArgb(86, _accent));
+            g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+            using var strip = new SolidBrush(_accent);
+            g.FillRectangle(strip, 0, 0, 5, Height);
+
+            using var titleFont = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            using var subFont = new Font("Segoe UI", 8F);
+            using var titleBrush = new SolidBrush(Color.White);
+            using var subBrush = new SolidBrush(Muted);
+            g.DrawString(_title, titleFont, titleBrush, new RectangleF(16, 10, Width - 26, 22));
+            g.DrawString(_subtitle, subFont, subBrush, new RectangleF(16, 34, Width - 26, Height - 38));
+        }
+    }
 
     private static void OpenFolder(string path)
     {
