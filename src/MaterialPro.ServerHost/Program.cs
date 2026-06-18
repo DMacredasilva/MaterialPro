@@ -11,6 +11,7 @@ namespace MaterialPro.ServerHost;
 
 public static class Program
 {
+    [STAThread]
     public static async Task Main(string[] args)
     {
         if (!args.Any(x => x.Equals("--prepare-database", StringComparison.OrdinalIgnoreCase))
@@ -25,13 +26,27 @@ public static class Program
             return;
         }
 
+        if (!WindowsServiceHelpers.IsWindowsService() && !args.Any(x => x.Equals("--service", StringComparison.OrdinalIgnoreCase)))
+        {
+            ApplicationConfiguration.Initialize();
+            using var dashboardHost = BuildHost(args);
+            await dashboardHost.StartAsync();
+            System.Windows.Forms.Application.Run(new ServerDashboardForm(dashboardHost.Services.GetRequiredService<MaterialProDbContext>()));
+            await dashboardHost.StopAsync(TimeSpan.FromSeconds(5));
+            return;
+        }
+
+        using var host = BuildHost(args);
+        await host.RunAsync();
+    }
+
+    private static IHost BuildHost(string[] args)
+    {
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services.AddWindowsService();
         builder.Services.AddHostedService<ServerHeartbeatService>();
         builder.Services.AddSingleton(CreateDbContext());
-
-        using var host = builder.Build();
-        await host.RunAsync();
+        return builder.Build();
     }
 
     private static MaterialProDbContext CreateDbContext()
