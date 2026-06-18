@@ -58,8 +58,9 @@ $clientManifest = @{
     PackageUrl = "https://raw.githubusercontent.com/DMacredasilva/MaterialPro/main/updates/client/update-package.zip?v=$Version"
 } | ConvertTo-Json -Depth 3
 
-Set-Content -Path (Join-Path $serverPayload "update-manifest.json") -Value $serverManifest -Encoding UTF8
-Set-Content -Path (Join-Path $clientPayload "update-manifest.json") -Value $clientManifest -Encoding UTF8
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText((Join-Path $serverPayload "update-manifest.json"), $serverManifest, $utf8NoBom)
+[System.IO.File]::WriteAllText((Join-Path $clientPayload "update-manifest.json"), $clientManifest, $utf8NoBom)
 
 $serverUpdateZip = Join-Path $serverPackage "update-package.zip"
 $clientUpdateZip = Join-Path $clientPackage "update-package.zip"

@@ -101,7 +101,7 @@ internal static class Program
             File.WriteAllText(manifestPath, manifestText);
         }
 
-        var manifest = JsonSerializer.Deserialize<UpdateManifest>(File.ReadAllText(manifestPath)) ?? new UpdateManifest();
+        var manifest = ParseManifest(File.ReadAllText(manifestPath));
         Log(logPath, $"Versao disponivel: {manifest.Version}");
         Log(logPath, $"Pacote: {manifest.PackagePath}");
         if (!string.IsNullOrWhiteSpace(manifest.PackageUrl))
@@ -191,7 +191,7 @@ internal static class Program
         UpdateManifest manifest = new();
         if (File.Exists(manifestPath))
         {
-            manifest = JsonSerializer.Deserialize<UpdateManifest>(File.ReadAllText(manifestPath)) ?? new UpdateManifest();
+            manifest = ParseManifest(File.ReadAllText(manifestPath));
         }
         else
         {
@@ -199,7 +199,7 @@ internal static class Program
             Log(logPath, $"Baixando manifesto: {manifestUrl}");
             var manifestText = DownloadString(manifestUrl, logPath);
             File.WriteAllText(manifestPath, manifestText);
-            manifest = JsonSerializer.Deserialize<UpdateManifest>(manifestText) ?? new UpdateManifest();
+            manifest = ParseManifest(manifestText);
         }
 
         var packageUrl = string.IsNullOrWhiteSpace(manifest.PackageUrl)
@@ -215,6 +215,11 @@ internal static class Program
     {
         var processName = Path.GetFileName(Environment.ProcessPath ?? string.Empty);
         return processName.Contains("server", StringComparison.OrdinalIgnoreCase) ? "server" : "client";
+    }
+
+    private static UpdateManifest ParseManifest(string json)
+    {
+        return JsonSerializer.Deserialize<UpdateManifest>(json.TrimStart('\uFEFF')) ?? new UpdateManifest();
     }
 
     private static string RemoteUrl(string channel, string fileName)

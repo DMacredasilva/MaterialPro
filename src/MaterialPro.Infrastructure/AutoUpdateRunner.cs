@@ -70,7 +70,7 @@ public static class AutoUpdateRunner
             return null;
         }
 
-        return JsonSerializer.Deserialize<UpdateManifest>(File.ReadAllText(path));
+        return ParseManifest(File.ReadAllText(path));
     }
 
     private static UpdateManifest? DownloadManifest(string channel)
@@ -86,7 +86,12 @@ public static class AutoUpdateRunner
         }
 
         var json = Encoding.UTF8.GetString(Convert.FromBase64String(response.Content.Replace("\n", string.Empty)));
-        return JsonSerializer.Deserialize<UpdateManifest>(json);
+        return ParseManifest(json);
+    }
+
+    private static UpdateManifest? ParseManifest(string json)
+    {
+        return JsonSerializer.Deserialize<UpdateManifest>(json.TrimStart('\uFEFF'));
     }
 
     private sealed class UpdateManifest
