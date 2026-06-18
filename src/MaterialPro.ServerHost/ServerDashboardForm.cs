@@ -389,7 +389,19 @@ Erro: {error}
 
             g.DrawString(Title, titleFont, ink, new PointF(14, 12));
             g.DrawString($"{_value:0}%", valueFont, accent, new PointF(14, 38));
-            g.DrawString(_detail, detailFont, muted, new RectangleF(14, 78, Width - 28, 30));
+            g.DrawString(_detail, detailFont, muted, new RectangleF(14, 78, Math.Max(90, Width - 120), 34));
+
+            var ringSize = Math.Min(58, Math.Max(42, Width / 5));
+            var ring = new Rectangle(Width - ringSize - 18, 30, ringSize, ringSize);
+            using var ringTrack = new Pen(Color.FromArgb(231, 236, 243), 8F) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
+            using var ringPen = new Pen(_accent, 8F) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
+            g.DrawArc(ringTrack, ring, -90, 360);
+            g.DrawArc(ringPen, ring, -90, (float)(_value / 100d * 360d));
+
+            using var centerFont = new Font("Segoe UI", 8F, FontStyle.Bold);
+            var centerText = _value >= 75 ? "ALTO" : _value >= 45 ? "MEDIO" : "OK";
+            var centerSize = g.MeasureString(centerText, centerFont);
+            g.DrawString(centerText, centerFont, accent, ring.Left + (ring.Width - centerSize.Width) / 2, ring.Top + (ring.Height - centerSize.Height) / 2);
 
             var chart = new Rectangle(14, Height - 54, Width - 28, 36);
             using var gridPen = new Pen(Color.FromArgb(235, 239, 244));

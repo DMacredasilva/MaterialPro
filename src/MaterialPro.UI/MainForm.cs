@@ -18,6 +18,7 @@ public sealed class MainForm : Form
 
     private readonly Label _brandTitleLabel;
     private readonly Label _brandSubtitleLabel;
+    private readonly PictureBox _brandLogoBox;
     private readonly Panel _contentPanel;
     private readonly TextBox _usernameBox;
     private readonly TextBox _passwordBox;
@@ -105,7 +106,7 @@ public sealed class MainForm : Form
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Controls.Add(shell);
 
-        var leftPane = BuildBrandPane(out _brandTitleLabel, out _brandSubtitleLabel);
+        var leftPane = BuildBrandPane(out _brandTitleLabel, out _brandSubtitleLabel, out _brandLogoBox);
         _contentPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(34), BackColor = Surface, AutoScroll = true };
         shell.Controls.Add(leftPane, 0, 0);
         shell.Controls.Add(_contentPanel, 1, 0);
@@ -182,12 +183,25 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _contentPanel.Controls.Add(root);
 
-        var header = new Panel { Dock = DockStyle.Top, Height = 126, Padding = new Padding(0, 0, 0, 18), BackColor = Surface };
-        var headerActions = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 270, Height = 42, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
-        headerActions.Controls.Add(PrimaryButton("Fechar programa", Color.FromArgb(170, 70, 50)));
-        headerActions.Controls[0].Click += (_, _) => Close();
-        headerActions.Controls.Add(PrimaryButton("Deslogar", SafetyOrange));
-        headerActions.Controls[1].Click += (_, _) => Logout();
+        var header = new Panel { Dock = DockStyle.Top, Height = 132, Padding = new Padding(0, 0, 0, 18), BackColor = Surface };
+        var headerActions = new FlowLayoutPanel
+        {
+            Width = 330,
+            Height = 48,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            BackColor = Surface
+        };
+        PositionHeaderActions(header, headerActions);
+        header.Resize += (_, _) => PositionHeaderActions(header, headerActions);
+
+        var closeButton = PrimaryButton("Fechar", Color.FromArgb(170, 70, 50), 120);
+        closeButton.Click += (_, _) => Close();
+        var logoutButton = PrimaryButton("Deslogar", SafetyOrange, 140);
+        logoutButton.Click += (_, _) => Logout();
+        headerActions.Controls.Add(closeButton);
+        headerActions.Controls.Add(logoutButton);
         header.Controls.Add(headerActions);
         header.Controls.Add(new Label
         {
@@ -436,9 +450,23 @@ public sealed class MainForm : Form
         return button;
     }
 
-    private Control BuildBrandPane(out Label title, out Label subtitle)
+    private static void PositionHeaderActions(Control header, Control actions)
+    {
+        actions.Location = new Point(Math.Max(0, header.ClientSize.Width - actions.Width), 8);
+    }
+
+    private Control BuildBrandPane(out Label title, out Label subtitle, out PictureBox logo)
     {
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = Navy, Padding = new Padding(28) };
+        logo = new PictureBox
+        {
+            Dock = DockStyle.Top,
+            Height = 86,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            BackColor = Navy,
+            Visible = false
+        };
+
         title = new Label
         {
             Text = "MaterialPro",
@@ -479,6 +507,7 @@ public sealed class MainForm : Form
         panel.Controls.Add(bands);
         panel.Controls.Add(subtitle);
         panel.Controls.Add(title);
+        panel.Controls.Add(logo);
         return panel;
     }
 
@@ -540,6 +569,31 @@ public sealed class MainForm : Form
         var storeName = string.IsNullOrWhiteSpace(profile.StoreName) ? "Loja de materiais" : profile.StoreName;
         var phone = string.IsNullOrWhiteSpace(profile.Phone) ? string.Empty : $" | {profile.Phone}";
         _brandSubtitleLabel.Text = $"{storeName}{phone}";
+        ApplyBrandLogo(profile.LogoPath);
+    }
+
+    private void ApplyBrandLogo(string? logoPath)
+    {
+        var previous = _brandLogoBox.Image;
+        _brandLogoBox.Image = null;
+        previous?.Dispose();
+
+        if (string.IsNullOrWhiteSpace(logoPath) || !File.Exists(logoPath))
+        {
+            _brandLogoBox.Visible = false;
+            return;
+        }
+
+        try
+        {
+            using var image = Image.FromFile(logoPath);
+            _brandLogoBox.Image = new Bitmap(image);
+            _brandLogoBox.Visible = true;
+        }
+        catch
+        {
+            _brandLogoBox.Visible = false;
+        }
     }
 
     private static Button ModuleTile(string title, string description, string tag, Color accent, Action open)
@@ -622,11 +676,12 @@ public sealed class MainForm : Form
         return new Panel { Dock = DockStyle.Top, Height = height };
     }
 
-    private static Button PrimaryButton(string text, Color color)
+    private static Button PrimaryButton(string text, Color color, int width = 150)
     {
         return new Button
         {
             Text = text,
+            Width = width,
             Height = 44,
             FlatStyle = FlatStyle.Flat,
             BackColor = color,

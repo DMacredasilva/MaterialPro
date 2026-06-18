@@ -202,6 +202,11 @@ internal static class Program
     private static string ResolveOrDownloadPackage(string updaterRoot, string installRoot, string channel, string packagePath, string logPath)
     {
         var resolvedPackage = Path.GetFullPath(Path.IsPathRooted(packagePath) ? packagePath : Path.Combine(updaterRoot, packagePath));
+        if (IsDefaultPackage(packagePath) && TryDownloadLatestPackage(updaterRoot, channel, resolvedPackage, logPath))
+        {
+            return resolvedPackage;
+        }
+
         if (File.Exists(resolvedPackage))
         {
             Log(logPath, $"Usando pacote local: {resolvedPackage}");
@@ -241,6 +246,36 @@ internal static class Program
         DownloadFile(packageUrl, resolvedPackage, logPath);
         return resolvedPackage;
     }
+
+    private static bool TryDownloadLatestPackage(string updaterRoot, string channel, string destination, string logPath)
+    {
+        try
+        {
+            var manifestUrl = RemoteUrl(channel, "update-manifest.json");
+            Log(logPath, $"Consultando atualizacao no GitHub: {manifestUrl}");
+            var manifestText = DownloadString(manifestUrl, logPath);
+            var manifestPath = Path.Combine(updaterRoot, "update-manifest.json");
+            File.WriteAllText(manifestPath, manifestText);
+
+            var manifest = ParseManifest(manifestText);
+            var packageUrl = string.IsNullOrWhiteSpace(manifest.PackageUrl)
+                ? RemoteUrl(channel, "update-package.zip")
+                : manifest.PackageUrl;
+
+            Log(logPath, $"Baixando pacote mais recente ({manifest.Version}): {packageUrl}");
+            DownloadFile(packageUrl, destination, logPath);
+            return File.Exists(destination);
+        }
+        catch (Exception ex)
+        {
+            Log(logPath, $"Nao foi possivel baixar pacote do GitHub, tentando pacote local: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static bool IsDefaultPackage(string packagePath)
+        => !Path.IsPathRooted(packagePath)
+            && packagePath.Equals("update-package.zip", StringComparison.OrdinalIgnoreCase);
 
     private static string DetectChannel()
     {
