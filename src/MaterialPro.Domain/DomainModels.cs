@@ -35,6 +35,13 @@ public enum Permission
     CloseCash,
     ViewCashHistory,
     ExportCashReports,
+    ViewFinancial,
+    ManageFinancialAccounts,
+    SettleFinancialAccounts,
+    CancelFinancialAccounts,
+    ApplyFinancialDiscount,
+    ExportFinancialReports,
+    ViewDelinquency,
     ManageStock,
     AdjustStock,
     ManageInventory,
@@ -414,7 +421,8 @@ public enum FinancialStatus
     Paid = 2,
     Cancelled = 3,
     Overdue = 4,
-    Returned = 5
+    Returned = 5,
+    Partial = 6
 }
 
 public enum FinancialType
@@ -429,13 +437,21 @@ public sealed class AccountPayable : EntityBase
     public string Number { get; set; } = string.Empty;
     public string SupplierName { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public string DocumentNumber { get; set; } = string.Empty;
+    public DateTime IssueDateUtc { get; set; } = DateTime.UtcNow;
     public decimal OriginalAmount { get; set; }
     public decimal PaidAmount { get; set; }
     public decimal BalanceAmount { get; set; }
+    public decimal InterestAmount { get; set; }
+    public decimal FineAmount { get; set; }
+    public decimal DiscountAmount { get; set; }
     public DateTime DueDateUtc { get; set; }
     public DateTime? PaidAtUtc { get; set; }
+    public Guid? UserId { get; set; }
     public FinancialStatus Status { get; set; } = FinancialStatus.Open;
     public string PaymentMethod { get; set; } = string.Empty;
+    public string Observation { get; set; } = string.Empty;
 }
 
 public sealed class Purchase : EntityBase
@@ -459,15 +475,24 @@ public sealed class Duplicate : EntityBase
 {
     public string Number { get; set; } = string.Empty;
     public FinancialType Type { get; set; } = FinancialType.Receivable;
+    public Guid? CustomerId { get; set; }
+    public Guid? SupplierId { get; set; }
     public Guid? SaleId { get; set; }
     public Guid? BudgetId { get; set; }
+    public Guid? AccountPayableId { get; set; }
+    public Guid? AccountReceivableId { get; set; }
     public string Description { get; set; } = string.Empty;
     public decimal Amount { get; set; }
     public decimal PaidAmount { get; set; }
     public decimal BalanceAmount { get; set; }
+    public decimal InterestAmount { get; set; }
+    public decimal FineAmount { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public DateTime IssueDateUtc { get; set; } = DateTime.UtcNow;
     public DateTime DueDateUtc { get; set; }
     public DateTime? PaidAtUtc { get; set; }
     public FinancialStatus Status { get; set; } = FinancialStatus.Open;
+    public string Observation { get; set; } = string.Empty;
 }
 
 public sealed class FinancialMovement : EntityBase
@@ -493,16 +518,58 @@ public sealed class SaleCancellation : EntityBase
 public sealed class AccountReceivable : EntityBase
 {
     public string Number { get; set; } = string.Empty;
+    public Guid? CustomerId { get; set; }
     public Guid? SaleId { get; set; }
     public string CustomerName { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public string DocumentNumber { get; set; } = string.Empty;
+    public DateTime IssueDateUtc { get; set; } = DateTime.UtcNow;
     public decimal OriginalAmount { get; set; }
     public decimal PaidAmount { get; set; }
     public decimal BalanceAmount { get; set; }
+    public decimal InterestAmount { get; set; }
+    public decimal FineAmount { get; set; }
+    public decimal DiscountAmount { get; set; }
     public DateTime DueDateUtc { get; set; }
     public DateTime? PaidAtUtc { get; set; }
+    public Guid? UserId { get; set; }
     public FinancialStatus Status { get; set; } = FinancialStatus.Open;
     public string PaymentMethod { get; set; } = string.Empty;
+    public string Observation { get; set; } = string.Empty;
+}
+
+public sealed class FinancialSettlement : EntityBase
+{
+    public Guid? DuplicateId { get; set; }
+    public Guid? AccountPayableId { get; set; }
+    public Guid? AccountReceivableId { get; set; }
+    public FinancialType Type { get; set; } = FinancialType.Receivable;
+    public decimal Amount { get; set; }
+    public decimal InterestAmount { get; set; }
+    public decimal FineAmount { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public decimal TotalAmount { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
+    public DateTime SettledAtUtc { get; set; } = DateTime.UtcNow;
+    public Guid? UserId { get; set; }
+    public Guid? CashSessionId { get; set; }
+    public string Observation { get; set; } = string.Empty;
+}
+
+public sealed class FinancialCategory : EntityBase
+{
+    public string Name { get; set; } = string.Empty;
+    public FinancialType Type { get; set; } = FinancialType.Receivable;
+}
+
+public sealed class FinancialLog : EntityBase
+{
+    public Guid? UserId { get; set; }
+    public DateTime LoggedAtUtc { get; set; } = DateTime.UtcNow;
+    public string Action { get; set; } = string.Empty;
+    public string Document { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string Reason { get; set; } = string.Empty;
 }
 
 public sealed class SaleReturn : EntityBase

@@ -372,28 +372,34 @@ public sealed class PdvService : IPdvService
                 var amount = i == installments ? payment.Amount - (installmentAmount * (installments - 1)) : installmentAmount;
                 var number = $"{sale.ReceiptNumber}-{i:D2}";
                 var due = firstDue.AddDays(30 * (i - 1));
-                _db.Duplicates.Add(new Duplicate
+                var receivable = new AccountReceivable
                 {
                     Number = number,
-                    Type = FinancialType.Receivable,
-                    SaleId = sale.Id,
-                    Description = $"Venda a prazo {sale.ReceiptNumber}",
-                    Amount = amount,
-                    BalanceAmount = amount,
-                    DueDateUtc = due,
-                    Status = FinancialStatus.Open
-                });
-                _db.AccountsReceivable.Add(new AccountReceivable
-                {
-                    Number = number,
+                    CustomerId = sale.CustomerId == Guid.Empty ? null : sale.CustomerId,
                     SaleId = sale.Id,
                     CustomerName = customerName,
                     Description = $"Venda a prazo {sale.ReceiptNumber}",
+                    IssueDateUtc = DateTime.UtcNow,
                     OriginalAmount = amount,
                     BalanceAmount = amount,
                     DueDateUtc = due,
                     Status = FinancialStatus.Open,
                     PaymentMethod = "PRAZO"
+                };
+                _db.AccountsReceivable.Add(receivable);
+                _db.Duplicates.Add(new Duplicate
+                {
+                    Number = number,
+                    Type = FinancialType.Receivable,
+                    CustomerId = sale.CustomerId == Guid.Empty ? null : sale.CustomerId,
+                    SaleId = sale.Id,
+                    AccountReceivableId = receivable.Id,
+                    Description = $"Venda a prazo {sale.ReceiptNumber}",
+                    Amount = amount,
+                    BalanceAmount = amount,
+                    IssueDateUtc = DateTime.UtcNow,
+                    DueDateUtc = due,
+                    Status = FinancialStatus.Open
                 });
             }
         }

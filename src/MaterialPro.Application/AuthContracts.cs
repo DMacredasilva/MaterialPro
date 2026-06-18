@@ -165,6 +165,12 @@ public sealed record CashHistoryRequest(DateTime? FromUtc = null, DateTime? ToUt
 public sealed record CashDashboardSummary(bool HasOpenCash, string OpenCashCode, decimal TodaySales, decimal TodayCash, decimal TodayPix, decimal TodayDebitCard, decimal TodayCreditCard, decimal TodayWithdrawals, decimal TodaySupplies, decimal TodayDifference);
 public sealed record CashReportRequest(DateTime? FromUtc = null, DateTime? ToUtc = null, Guid? OperatorId = null, bool OnlyWithdrawals = false, bool OnlySupplies = false, bool OnlyDifferences = false);
 public sealed record AccountPayableRequest(string Number, string SupplierName, string Description, decimal OriginalAmount, DateTime DueDateUtc, string PaymentMethod);
+public sealed record AccountReceivableRequest(string Number, Guid? CustomerId, Guid? SaleId, string CustomerName, string Description, decimal OriginalAmount, DateTime DueDateUtc, string ReceiveMethod);
+public sealed record FinancialSettlementRequest(Guid DocumentId, MaterialPro.Domain.FinancialType Type, decimal Amount, decimal Interest = 0, decimal Fine = 0, decimal Discount = 0, string PaymentMethod = "DINHEIRO", Guid? UserId = null, Guid? CashSessionId = null, string Observation = "");
+public sealed record FinancialCancelRequest(Guid DocumentId, MaterialPro.Domain.FinancialType Type, string Reason, Guid? UserId = null);
+public sealed record FinancialSearchRequest(DateTime? FromUtc = null, DateTime? ToUtc = null, string Term = "", MaterialPro.Domain.FinancialStatus? Status = null, bool OnlyOverdue = false);
+public sealed record FinancialDashboardSummary(decimal PayableToday, decimal PayableOverdue, decimal ReceivableToday, decimal ReceivableOverdue, decimal ReceivedThisMonth, decimal PaidThisMonth, decimal ForecastBalance, IReadOnlyList<FinancialCashFlowItem> CashFlow, IReadOnlyList<string> Alerts);
+public sealed record FinancialCashFlowItem(DateTime DateUtc, decimal ExpectedIn, decimal ExpectedOut, decimal RealizedIn, decimal RealizedOut, decimal DailyBalance, decimal ForecastBalance);
 public sealed record DuplicateRequest(string Number, MaterialPro.Domain.FinancialType Type, Guid? SaleId, Guid? BudgetId, decimal Amount, DateTime DueDateUtc);
 public sealed record FinancialMovementRequest(string Number, MaterialPro.Domain.FinancialType Type, decimal Amount, string Description, string Reference);
 public sealed record SaleCancellationRequest(Guid SaleId, string Reason, Guid UserId, string ManagerPassword, string Observation);
@@ -405,13 +411,29 @@ public interface ICashReportService
 public interface IFinancialService
 {
     AccountPayable CreatePayable(AccountPayableRequest request);
+    AccountReceivable CreateReceivable(AccountReceivableRequest request);
     AccountPayable PayableBaixa(Guid id, decimal amount, string paymentMethod);
+    AccountPayable SettlePayable(FinancialSettlementRequest request);
+    AccountReceivable SettleReceivable(FinancialSettlementRequest request);
     AccountPayable CancelPayable(Guid id, string reason);
+    AccountReceivable CancelReceivable(Guid id, string reason);
     Duplicate CreateDuplicate(DuplicateRequest request);
     Duplicate DuplicateBaixa(Guid id, decimal amount);
+    Duplicate SettleDuplicate(FinancialSettlementRequest request);
     Duplicate CancelDuplicate(Guid id, string reason);
     Duplicate IssueSecondCopy(Guid id);
     FinancialMovement RegisterMovement(FinancialMovementRequest request);
+    IReadOnlyList<AccountPayable> SearchPayables(FinancialSearchRequest request);
+    IReadOnlyList<AccountReceivable> SearchReceivables(FinancialSearchRequest request);
+    IReadOnlyList<Duplicate> SearchDuplicates(FinancialSearchRequest request);
+    IReadOnlyList<FinancialSettlement> Settlements(Guid? documentId = null);
+    IReadOnlyList<FinancialCategory> Categories(MaterialPro.Domain.FinancialType? type = null);
+    FinancialCategory CreateCategory(string name, MaterialPro.Domain.FinancialType type);
+    FinancialDashboardSummary Dashboard(DateTime? todayUtc = null);
+    IReadOnlyList<FinancialCashFlowItem> CashFlow(DateTime fromUtc, DateTime toUtc);
+    byte[] ExportPdf(FinancialSearchRequest request);
+    byte[] ExportExcel(FinancialSearchRequest request);
+    byte[] PrintReceipt(Guid settlementId, InternalPaperFormat format = InternalPaperFormat.Thermal80);
     SaleCancellation CancelSale(SaleCancellationRequest request);
     SaleReturn ReturnSale(SaleReturnRequest request);
     AccountPayable ReversePayable(Guid id, string reason);

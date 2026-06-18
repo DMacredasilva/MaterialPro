@@ -171,13 +171,34 @@ public sealed partial class MaterialProDbContext : DbContext
 
         modelBuilder.Entity<AccountReceivable>(entity =>
         {
+            entity.ToTable("contas_receber");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.CustomerId).HasColumnName("cliente_id");
+            entity.Property(x => x.SaleId).HasColumnName("venda_id");
             entity.Property(x => x.Number).HasMaxLength(60);
+            entity.Property(x => x.Number).HasColumnName("numero_documento");
             entity.Property(x => x.CustomerName).HasMaxLength(160);
+            entity.Property(x => x.CustomerName).HasColumnName("CustomerName");
             entity.Property(x => x.Description).HasMaxLength(300);
+            entity.Property(x => x.Description).HasColumnName("descricao");
+            entity.Property(x => x.DocumentNumber).HasColumnName("DocumentNumber").HasMaxLength(80);
+            entity.Property(x => x.IssueDateUtc).HasColumnName("data_emissao");
             entity.Property(x => x.PaymentMethod).HasMaxLength(60);
+            entity.Property(x => x.PaymentMethod).HasColumnName("forma_recebimento");
             entity.Property(x => x.OriginalAmount).HasPrecision(18, 2);
+            entity.Property(x => x.OriginalAmount).HasColumnName("valor_original");
             entity.Property(x => x.PaidAmount).HasPrecision(18, 2);
+            entity.Property(x => x.PaidAmount).HasColumnName("valor_recebido");
             entity.Property(x => x.BalanceAmount).HasPrecision(18, 2);
+            entity.Property(x => x.BalanceAmount).HasColumnName("saldo");
+            entity.Property(x => x.InterestAmount).HasColumnName("juros").HasPrecision(18, 2);
+            entity.Property(x => x.FineAmount).HasColumnName("multa").HasPrecision(18, 2);
+            entity.Property(x => x.DiscountAmount).HasColumnName("desconto").HasPrecision(18, 2);
+            entity.Property(x => x.DueDateUtc).HasColumnName("data_vencimento");
+            entity.Property(x => x.PaidAtUtc).HasColumnName("data_recebimento");
+            entity.Property(x => x.UserId).HasColumnName("usuario_id");
+            entity.Property(x => x.Status).HasColumnName("status");
+            entity.Property(x => x.Observation).HasColumnName("observacao").HasMaxLength(500);
         });
 
         modelBuilder.Entity<SaleItem>(entity =>
@@ -289,13 +310,33 @@ public sealed partial class MaterialProDbContext : DbContext
 
         modelBuilder.Entity<AccountPayable>(entity =>
         {
+            entity.ToTable("contas_pagar");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.SupplierId).HasColumnName("fornecedor_id");
             entity.Property(x => x.Number).HasMaxLength(60);
+            entity.Property(x => x.Number).HasColumnName("numero_documento");
             entity.Property(x => x.SupplierName).HasMaxLength(160);
             entity.Property(x => x.Description).HasMaxLength(300);
+            entity.Property(x => x.Description).HasColumnName("descricao");
+            entity.Property(x => x.Category).HasColumnName("categoria").HasMaxLength(120);
+            entity.Property(x => x.DocumentNumber).HasColumnName("DocumentNumber").HasMaxLength(80);
+            entity.Property(x => x.IssueDateUtc).HasColumnName("data_emissao");
             entity.Property(x => x.PaymentMethod).HasMaxLength(60);
+            entity.Property(x => x.PaymentMethod).HasColumnName("forma_pagamento");
             entity.Property(x => x.OriginalAmount).HasPrecision(18, 2);
+            entity.Property(x => x.OriginalAmount).HasColumnName("valor_original");
             entity.Property(x => x.PaidAmount).HasPrecision(18, 2);
+            entity.Property(x => x.PaidAmount).HasColumnName("valor_pago");
             entity.Property(x => x.BalanceAmount).HasPrecision(18, 2);
+            entity.Property(x => x.BalanceAmount).HasColumnName("saldo");
+            entity.Property(x => x.InterestAmount).HasColumnName("juros").HasPrecision(18, 2);
+            entity.Property(x => x.FineAmount).HasColumnName("multa").HasPrecision(18, 2);
+            entity.Property(x => x.DiscountAmount).HasColumnName("desconto").HasPrecision(18, 2);
+            entity.Property(x => x.DueDateUtc).HasColumnName("data_vencimento");
+            entity.Property(x => x.PaidAtUtc).HasColumnName("data_pagamento");
+            entity.Property(x => x.UserId).HasColumnName("usuario_id");
+            entity.Property(x => x.Status).HasColumnName("status");
+            entity.Property(x => x.Observation).HasColumnName("observacao").HasMaxLength(500);
         });
 
         modelBuilder.Entity<Purchase>(entity =>
@@ -313,11 +354,72 @@ public sealed partial class MaterialProDbContext : DbContext
 
         modelBuilder.Entity<Duplicate>(entity =>
         {
+            entity.ToTable("duplicatas");
+            entity.Property(x => x.Id).HasColumnName("id");
             entity.Property(x => x.Number).HasMaxLength(60);
+            entity.Property(x => x.Number).HasColumnName("numero_duplicata");
+            entity.Property(x => x.Type).HasColumnName("tipo");
+            entity.Property(x => x.CustomerId).HasColumnName("cliente_id");
+            entity.Property(x => x.SupplierId).HasColumnName("fornecedor_id");
+            entity.Property(x => x.SaleId).HasColumnName("venda_id");
+            entity.Property(x => x.AccountPayableId).HasColumnName("conta_pagar_id");
+            entity.Property(x => x.AccountReceivableId).HasColumnName("conta_receber_id");
             entity.Property(x => x.Description).HasMaxLength(300);
+            entity.Property(x => x.Description).HasColumnName("observacao");
             entity.Property(x => x.Amount).HasPrecision(18, 2);
+            entity.Property(x => x.Amount).HasColumnName("valor_original");
             entity.Property(x => x.PaidAmount).HasPrecision(18, 2);
+            entity.Property(x => x.PaidAmount).HasColumnName("valor_pago");
             entity.Property(x => x.BalanceAmount).HasPrecision(18, 2);
+            entity.Property(x => x.BalanceAmount).HasColumnName("saldo");
+            entity.Property(x => x.InterestAmount).HasColumnName("juros").HasPrecision(18, 2);
+            entity.Property(x => x.FineAmount).HasColumnName("multa").HasPrecision(18, 2);
+            entity.Property(x => x.DiscountAmount).HasColumnName("desconto").HasPrecision(18, 2);
+            entity.Property(x => x.IssueDateUtc).HasColumnName("data_emissao");
+            entity.Property(x => x.DueDateUtc).HasColumnName("data_vencimento");
+            entity.Property(x => x.Status).HasColumnName("status");
+            entity.Property(x => x.Observation).HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<FinancialSettlement>(entity =>
+        {
+            entity.ToTable("baixas_financeiras");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.DuplicateId).HasColumnName("duplicata_id");
+            entity.Property(x => x.AccountPayableId).HasColumnName("conta_pagar_id");
+            entity.Property(x => x.AccountReceivableId).HasColumnName("conta_receber_id");
+            entity.Property(x => x.Type).HasColumnName("tipo");
+            entity.Property(x => x.Amount).HasColumnName("valor_baixa").HasPrecision(18, 2);
+            entity.Property(x => x.InterestAmount).HasColumnName("juros").HasPrecision(18, 2);
+            entity.Property(x => x.FineAmount).HasColumnName("multa").HasPrecision(18, 2);
+            entity.Property(x => x.DiscountAmount).HasColumnName("desconto").HasPrecision(18, 2);
+            entity.Property(x => x.TotalAmount).HasColumnName("valor_total").HasPrecision(18, 2);
+            entity.Property(x => x.PaymentMethod).HasColumnName("forma_pagamento").HasMaxLength(60);
+            entity.Property(x => x.SettledAtUtc).HasColumnName("data_baixa");
+            entity.Property(x => x.UserId).HasColumnName("usuario_id");
+            entity.Property(x => x.CashSessionId).HasColumnName("caixa_id");
+            entity.Property(x => x.Observation).HasColumnName("observacao").HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<FinancialCategory>(entity =>
+        {
+            entity.ToTable("categorias_financeiras");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.Name).HasColumnName("nome").HasMaxLength(120);
+            entity.Property(x => x.Type).HasColumnName("tipo");
+            entity.Property(x => x.IsActive).HasColumnName("ativo");
+        });
+
+        modelBuilder.Entity<FinancialLog>(entity =>
+        {
+            entity.ToTable("logs_financeiros");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("usuario_id");
+            entity.Property(x => x.LoggedAtUtc).HasColumnName("data_hora");
+            entity.Property(x => x.Action).HasColumnName("acao").HasMaxLength(120);
+            entity.Property(x => x.Document).HasColumnName("documento").HasMaxLength(120);
+            entity.Property(x => x.Amount).HasColumnName("valor").HasPrecision(18, 2);
+            entity.Property(x => x.Reason).HasColumnName("motivo").HasMaxLength(500);
         });
 
         modelBuilder.Entity<FinancialMovement>(entity =>
@@ -592,6 +694,7 @@ public sealed class MaterialProDatabaseInitializer
         CreatePurchaseTablesIfMissing();
         CreateStockTablesIfMissing();
         CreatePdvTablesIfMissing();
+        CreateFinancialTablesIfMissing();
 
         AddIndexIfMissing("Products", "IX_Products_Barcode", "`Barcode`");
         AddIndexIfMissing("Products", "IX_Products_Category", "`Category`");
@@ -607,6 +710,171 @@ public sealed class MaterialProDatabaseInitializer
         AddIndexIfMissing("Suppliers", "IX_Suppliers_WhatsApp", "`WhatsApp`");
         AddIndexIfMissing("Products", "IX_Products_SupplierId", "`SupplierId`");
         AddIndexIfMissing("AccountsPayable", "IX_AccountsPayable_SupplierId", "`SupplierId`");
+        AddIndexIfMissing("contas_pagar", "IX_contas_pagar_fornecedor_id", "`fornecedor_id`");
+        AddIndexIfMissing("contas_pagar", "IX_contas_pagar_vencimento", "`data_vencimento`");
+        AddIndexIfMissing("contas_receber", "IX_contas_receber_cliente_id", "`cliente_id`");
+        AddIndexIfMissing("contas_receber", "IX_contas_receber_vencimento", "`data_vencimento`");
+        AddIndexIfMissing("duplicatas", "IX_duplicatas_vencimento", "`data_vencimento`");
+    }
+
+    private void CreateFinancialTablesIfMissing()
+    {
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `contas_pagar` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `fornecedor_id` char(36) NULL,
+              `numero_documento` varchar(60) NOT NULL DEFAULT '',
+              `SupplierName` varchar(160) NOT NULL DEFAULT '',
+              `descricao` varchar(300) NOT NULL DEFAULT '',
+              `categoria` varchar(120) NOT NULL DEFAULT '',
+              `DocumentNumber` varchar(80) NOT NULL DEFAULT '',
+              `data_emissao` datetime(6) NOT NULL,
+              `valor_original` decimal(18,2) NOT NULL DEFAULT 0,
+              `valor_pago` decimal(18,2) NOT NULL DEFAULT 0,
+              `saldo` decimal(18,2) NOT NULL DEFAULT 0,
+              `juros` decimal(18,2) NOT NULL DEFAULT 0,
+              `multa` decimal(18,2) NOT NULL DEFAULT 0,
+              `desconto` decimal(18,2) NOT NULL DEFAULT 0,
+              `data_vencimento` datetime(6) NOT NULL,
+              `data_pagamento` datetime(6) NULL,
+              `usuario_id` char(36) NULL,
+              `status` int NOT NULL DEFAULT 1,
+              `forma_pagamento` varchar(60) NOT NULL DEFAULT '',
+              `observacao` varchar(500) NOT NULL DEFAULT '',
+              PRIMARY KEY (`id`),
+              UNIQUE INDEX `IX_AccountsPayable_Number` (`numero_documento`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `contas_receber` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `cliente_id` char(36) NULL,
+              `venda_id` char(36) NULL,
+              `numero_documento` varchar(60) NOT NULL DEFAULT '',
+              `CustomerName` varchar(160) NOT NULL DEFAULT '',
+              `descricao` varchar(300) NOT NULL DEFAULT '',
+              `DocumentNumber` varchar(80) NOT NULL DEFAULT '',
+              `data_emissao` datetime(6) NOT NULL,
+              `valor_original` decimal(18,2) NOT NULL DEFAULT 0,
+              `valor_recebido` decimal(18,2) NOT NULL DEFAULT 0,
+              `saldo` decimal(18,2) NOT NULL DEFAULT 0,
+              `juros` decimal(18,2) NOT NULL DEFAULT 0,
+              `multa` decimal(18,2) NOT NULL DEFAULT 0,
+              `desconto` decimal(18,2) NOT NULL DEFAULT 0,
+              `data_vencimento` datetime(6) NOT NULL,
+              `data_recebimento` datetime(6) NULL,
+              `usuario_id` char(36) NULL,
+              `status` int NOT NULL DEFAULT 1,
+              `forma_recebimento` varchar(60) NOT NULL DEFAULT '',
+              `observacao` varchar(500) NOT NULL DEFAULT '',
+              PRIMARY KEY (`id`),
+              UNIQUE INDEX `IX_AccountsReceivable_Number` (`numero_documento`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `duplicatas` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `numero_duplicata` varchar(60) NOT NULL DEFAULT '',
+              `tipo` int NOT NULL,
+              `cliente_id` char(36) NULL,
+              `fornecedor_id` char(36) NULL,
+              `venda_id` char(36) NULL,
+              `BudgetId` char(36) NULL,
+              `conta_pagar_id` char(36) NULL,
+              `conta_receber_id` char(36) NULL,
+              `observacao` varchar(500) NOT NULL DEFAULT '',
+              `valor_original` decimal(18,2) NOT NULL DEFAULT 0,
+              `valor_pago` decimal(18,2) NOT NULL DEFAULT 0,
+              `saldo` decimal(18,2) NOT NULL DEFAULT 0,
+              `juros` decimal(18,2) NOT NULL DEFAULT 0,
+              `multa` decimal(18,2) NOT NULL DEFAULT 0,
+              `desconto` decimal(18,2) NOT NULL DEFAULT 0,
+              `data_emissao` datetime(6) NOT NULL,
+              `data_vencimento` datetime(6) NOT NULL,
+              `PaidAtUtc` datetime(6) NULL,
+              `status` int NOT NULL DEFAULT 1,
+              `Observation` varchar(500) NOT NULL DEFAULT '',
+              PRIMARY KEY (`id`),
+              UNIQUE INDEX `IX_Duplicates_Number` (`numero_duplicata`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `baixas_financeiras` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `duplicata_id` char(36) NULL,
+              `conta_pagar_id` char(36) NULL,
+              `conta_receber_id` char(36) NULL,
+              `tipo` int NOT NULL,
+              `valor_baixa` decimal(18,2) NOT NULL DEFAULT 0,
+              `juros` decimal(18,2) NOT NULL DEFAULT 0,
+              `multa` decimal(18,2) NOT NULL DEFAULT 0,
+              `desconto` decimal(18,2) NOT NULL DEFAULT 0,
+              `valor_total` decimal(18,2) NOT NULL DEFAULT 0,
+              `forma_pagamento` varchar(60) NOT NULL DEFAULT '',
+              `data_baixa` datetime(6) NOT NULL,
+              `usuario_id` char(36) NULL,
+              `caixa_id` char(36) NULL,
+              `observacao` varchar(500) NOT NULL DEFAULT '',
+              PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `categorias_financeiras` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `ativo` tinyint(1) NOT NULL DEFAULT 1,
+              `nome` varchar(120) NOT NULL DEFAULT '',
+              `tipo` int NOT NULL,
+              PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `logs_financeiros` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `usuario_id` char(36) NULL,
+              `data_hora` datetime(6) NOT NULL,
+              `acao` varchar(120) NOT NULL DEFAULT '',
+              `documento` varchar(120) NOT NULL DEFAULT '',
+              `valor` decimal(18,2) NOT NULL DEFAULT 0,
+              `motivo` varchar(500) NOT NULL DEFAULT '',
+              PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        SeedFinancialCategories();
+    }
+
+    private void SeedFinancialCategories()
+    {
+        if (_db.FinancialCategories.Any())
+        {
+            return;
+        }
+
+        foreach (var name in new[] { "Venda a vista", "Venda a prazo", "Recebimento duplicata", "Outros recebimentos" })
+        {
+            _db.FinancialCategories.Add(new FinancialCategory { Name = name, Type = FinancialType.Receivable });
+        }
+        foreach (var name in new[] { "Fornecedor", "Funcionarios", "Aluguel", "Agua", "Luz", "Internet", "Impostos", "Transporte", "Outros pagamentos" })
+        {
+            _db.FinancialCategories.Add(new FinancialCategory { Name = name, Type = FinancialType.Payable });
+        }
+        _db.SaveChanges();
     }
 
     private void CreatePdvTablesIfMissing()

@@ -43,6 +43,7 @@ public sealed class MainForm : Form
     private readonly ISaleCancellationService _saleCancellationService;
     private readonly ICashService _cashService;
     private readonly ICashReportService _cashReportService;
+    private readonly IFinancialService _financialService;
     private readonly IPrintService _printService;
     private readonly MaterialProDbContext _db;
     private readonly IDbfImportService _dbfImportService;
@@ -88,6 +89,7 @@ public sealed class MainForm : Form
         _saleCancellationService = new SaleCancellationService(_db, hasher, _securityService);
         _cashService = new CashService(_db, hasher, _securityService);
         _cashReportService = new CashReportService(_db);
+        _financialService = new FinancialService(_db);
         _dbfImportService = new DbfImportService(_db);
         new MaterialProDatabaseInitializer(_db, _authService).EnsureCreated();
 
@@ -244,6 +246,13 @@ public sealed class MainForm : Form
         {
             if (_currentUser is null) return;
             using var form = new CashForm(_cashService, _cashReportService, _currentUser);
+            form.ShowDialog(this);
+            ShowDashboard();
+        }));
+        modules.Controls.Add(ModuleTile("Financeiro", "Contas a pagar, receber, duplicatas, baixas e fluxo de caixa.", "FIN", Color.FromArgb(44, 104, 110), () =>
+        {
+            if (_currentUser is null) return;
+            using var form = new FinancialForm(_financialService, _currentUser);
             form.ShowDialog(this);
             ShowDashboard();
         }));

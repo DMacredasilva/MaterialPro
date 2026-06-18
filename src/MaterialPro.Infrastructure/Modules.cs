@@ -20,6 +20,9 @@ public sealed partial class MaterialProDbContext
     public DbSet<AccountPayable> AccountsPayable => Set<AccountPayable>();
     public DbSet<Duplicate> Duplicates => Set<Duplicate>();
     public DbSet<FinancialMovement> FinancialMovements => Set<FinancialMovement>();
+    public DbSet<FinancialSettlement> FinancialSettlements => Set<FinancialSettlement>();
+    public DbSet<FinancialCategory> FinancialCategories => Set<FinancialCategory>();
+    public DbSet<FinancialLog> FinancialLogs => Set<FinancialLog>();
     public DbSet<SaleCancellation> SaleCancellations => Set<SaleCancellation>();
     public DbSet<SaleReturn> SaleReturns => Set<SaleReturn>();
     public DbSet<NonFiscalNote> NonFiscalNotes => Set<NonFiscalNote>();
@@ -1666,11 +1669,15 @@ public sealed class FinancialService : IFinancialService
 
     public AccountPayable CreatePayable(AccountPayableRequest request)
     {
+        if (request.OriginalAmount <= 0) throw new InvalidOperationException("Valor da conta a pagar deve ser maior que zero.");
+        if (_db.AccountsPayable.Any(x => x.Number == request.Number.Trim())) throw new InvalidOperationException("Conta a pagar duplicada.");
         var entity = new AccountPayable
         {
             Number = request.Number.Trim(),
             SupplierName = request.SupplierName.Trim(),
             Description = request.Description.Trim(),
+            Category = "Fornecedor",
+            IssueDateUtc = DateTime.UtcNow,
             OriginalAmount = request.OriginalAmount,
             PaidAmount = 0,
             BalanceAmount = request.OriginalAmount,
@@ -1678,36 +1685,107 @@ public sealed class FinancialService : IFinancialService
             PaymentMethod = request.PaymentMethod.Trim()
         };
         _db.AccountsPayable.Add(entity);
+        Log("Cadastro conta pagar", entity.Number, entity.OriginalAmount, entity.Description, null);
+        _db.SaveChanges();
+        return entity;
+    }
+
+    public AccountReceivable CreateReceivable(AccountReceivableRequest request)
+    {
+        if (request.OriginalAmount <= 0) throw new InvalidOperationException("Valor da conta a receber deve ser maior que zero.");
+        if (_db.AccountsReceivable.Any(x => x.Number == request.Number.Trim())) throw new InvalidOperationException("Conta a receber duplicada.");
+        var customerName = request.CustomerName.Trim();
+        if (request.CustomerId.HasValue && string.IsNullOrWhiteSpace(customerName))
+        {
+            customerName = _db.Customers.Where(x => x.Id == request.CustomerId.Value).Select(x => x.FullName).FirstOrDefault() ?? string.Empty;
+        }
+
+        var entity = new AccountReceivable
+        {
+            Number = request.Number.Trim(),
+            CustomerId = request.CustomerId,
+            SaleId = request.SaleId,
+            CustomerName = customerName,
+            Description = request.Description.Trim(),
+            IssueDateUtc = DateTime.UtcNow,
+            OriginalAmount = request.OriginalAmount,
+            BalanceAmount = request.OriginalAmount,
+            DueDateUtc = request.DueDateUtc,
+            PaymentMethod = request.ReceiveMethod.Trim()
+        };
+        _db.AccountsReceivable.Add(entity);
+        Log("Cadastro conta receber", entity.Number, entity.OriginalAmount, entity.Description, null);
         _db.SaveChanges();
         return entity;
     }
 
     public AccountPayable PayableBaixa(Guid id, decimal amount, string paymentMethod)
+        => SettlePayable(new FinancialSettlementRequest(id, FinancialType.Payable, amount, PaymentMethod: paymentMethod));
+
+    public AccountPayable SettlePayable(FinancialSettlementRequest request)
     {
-        var entity = _db.AccountsPayable.First(x => x.Id == id);
-        entity.PaidAmount += amount;
-        entity.BalanceAmount = Math.Max(0, entity.OriginalAmount - entity.PaidAmount);
-        entity.PaymentMethod = paymentMethod.Trim();
-        entity.Status = entity.BalanceAmount <= 0 ? FinancialStatus.Paid : FinancialStatus.Open;
+        var entity = _db.AccountsPayable.First(x => x.Id == request.DocumentId);
+        EnsureCanSettle(entity.Status, entity.BalanceAmount, request.Amount);
+        ApplySettlement(entity, request);
+        entity.PaymentMethod = request.PaymentMethod.Trim();
         entity.PaidAtUtc = entity.Status == FinancialStatus.Paid ? DateTime.UtcNow : entity.PaidAtUtc;
         entity.UpdatedAtUtc = DateTime.UtcNow;
+        _db.FinancialSettlements.Add(BuildSettlement(request, FinancialType.Payable, accountPayableId: entity.Id));
+        _db.FinancialMovements.Add(new FinancialMovement { Number = entity.Number, Type = FinancialType.Payable, Amount = request.Amount, Description = $"Pagamento {entity.Description}", Reference = request.PaymentMethod });
+        Log("Baixa conta pagar", entity.Number, request.Amount, request.Observation, request.UserId);
+        _db.SaveChanges();
+        return entity;
+    }
+
+    public AccountReceivable SettleReceivable(FinancialSettlementRequest request)
+    {
+        var entity = _db.AccountsReceivable.First(x => x.Id == request.DocumentId);
+        EnsureCanSettle(entity.Status, entity.BalanceAmount, request.Amount);
+        ApplySettlement(entity, request);
+        entity.PaymentMethod = request.PaymentMethod.Trim();
+        entity.PaidAtUtc = entity.Status == FinancialStatus.Paid ? DateTime.UtcNow : entity.PaidAtUtc;
+        entity.UpdatedAtUtc = DateTime.UtcNow;
+        _db.FinancialSettlements.Add(BuildSettlement(request, FinancialType.Receivable, accountReceivableId: entity.Id));
+        _db.FinancialMovements.Add(new FinancialMovement { Number = entity.Number, Type = FinancialType.Receivable, Amount = request.Amount, Description = $"Recebimento {entity.Description}", Reference = request.PaymentMethod });
+        RegisterCashReceipt(entity, request);
+        Log("Baixa conta receber", entity.Number, request.Amount, request.Observation, request.UserId);
         _db.SaveChanges();
         return entity;
     }
 
     public AccountPayable CancelPayable(Guid id, string reason)
     {
+        if (string.IsNullOrWhiteSpace(reason)) throw new InvalidOperationException("Motivo obrigatorio para cancelamento.");
         var entity = _db.AccountsPayable.First(x => x.Id == id);
+        if (entity.Status == FinancialStatus.Paid) throw new InvalidOperationException("Nao e permitido cancelar conta paga sem estorno gerencial.");
         entity.Status = FinancialStatus.Cancelled;
         entity.Description = $"{entity.Description} | CANCELADO: {reason.Trim()}";
         entity.BalanceAmount = 0;
+        entity.IsActive = false;
         entity.UpdatedAtUtc = DateTime.UtcNow;
+        Log("Cancelamento conta pagar", entity.Number, entity.OriginalAmount, reason, null);
+        _db.SaveChanges();
+        return entity;
+    }
+
+    public AccountReceivable CancelReceivable(Guid id, string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) throw new InvalidOperationException("Motivo obrigatorio para cancelamento.");
+        var entity = _db.AccountsReceivable.First(x => x.Id == id);
+        if (entity.Status == FinancialStatus.Paid) throw new InvalidOperationException("Nao e permitido cancelar conta recebida sem estorno gerencial.");
+        entity.Status = FinancialStatus.Cancelled;
+        entity.Description = $"{entity.Description} | CANCELADO: {reason.Trim()}";
+        entity.BalanceAmount = 0;
+        entity.IsActive = false;
+        entity.UpdatedAtUtc = DateTime.UtcNow;
+        Log("Cancelamento conta receber", entity.Number, entity.OriginalAmount, reason, null);
         _db.SaveChanges();
         return entity;
     }
 
     public Duplicate CreateDuplicate(DuplicateRequest request)
     {
+        if (request.Amount <= 0) throw new InvalidOperationException("Valor da duplicata deve ser maior que zero.");
         var entity = new Duplicate
         {
             Number = request.Number.Trim(),
@@ -1716,22 +1794,41 @@ public sealed class FinancialService : IFinancialService
             BudgetId = request.BudgetId,
             Amount = request.Amount,
             BalanceAmount = request.Amount,
+            IssueDateUtc = DateTime.UtcNow,
             DueDateUtc = request.DueDateUtc,
             Status = FinancialStatus.Open
         };
         _db.Duplicates.Add(entity);
+        Log("Cadastro duplicata", entity.Number, entity.Amount, entity.Type.ToString(), null);
         _db.SaveChanges();
         return entity;
     }
 
     public Duplicate DuplicateBaixa(Guid id, decimal amount)
+        => SettleDuplicate(new FinancialSettlementRequest(id, FinancialType.Receivable, amount));
+
+    public Duplicate SettleDuplicate(FinancialSettlementRequest request)
     {
-        var entity = _db.Duplicates.First(x => x.Id == id);
-        entity.PaidAmount += amount;
-        entity.BalanceAmount = Math.Max(0, entity.Amount - entity.PaidAmount);
-        entity.Status = entity.BalanceAmount <= 0 ? FinancialStatus.Paid : FinancialStatus.Open;
+        var entity = _db.Duplicates.First(x => x.Id == request.DocumentId);
+        EnsureCanSettle(entity.Status, entity.BalanceAmount, request.Amount);
+        entity.PaidAmount += request.Amount;
+        entity.InterestAmount += request.Interest;
+        entity.FineAmount += request.Fine;
+        entity.DiscountAmount += request.Discount;
+        entity.BalanceAmount = Math.Max(0, entity.Amount + entity.InterestAmount + entity.FineAmount - entity.DiscountAmount - entity.PaidAmount);
+        entity.Status = entity.BalanceAmount <= 0 ? FinancialStatus.Paid : FinancialStatus.Partial;
         entity.PaidAtUtc = entity.Status == FinancialStatus.Paid ? DateTime.UtcNow : entity.PaidAtUtc;
         entity.UpdatedAtUtc = DateTime.UtcNow;
+        _db.FinancialSettlements.Add(BuildSettlement(request, entity.Type, duplicateId: entity.Id));
+        if (entity.AccountReceivableId.HasValue)
+        {
+            SettleReceivable(request with { DocumentId = entity.AccountReceivableId.Value, Type = FinancialType.Receivable });
+        }
+        if (entity.AccountPayableId.HasValue)
+        {
+            SettlePayable(request with { DocumentId = entity.AccountPayableId.Value, Type = FinancialType.Payable });
+        }
+        Log("Baixa duplicata", entity.Number, request.Amount, request.Observation, request.UserId);
         _db.SaveChanges();
         return entity;
     }
@@ -1742,7 +1839,9 @@ public sealed class FinancialService : IFinancialService
         entity.Status = FinancialStatus.Cancelled;
         entity.Description = reason.Trim();
         entity.BalanceAmount = 0;
+        entity.IsActive = false;
         entity.UpdatedAtUtc = DateTime.UtcNow;
+        Log("Cancelamento duplicata", entity.Number, entity.Amount, reason, null);
         _db.SaveChanges();
         return entity;
     }
@@ -1779,8 +1878,342 @@ public sealed class FinancialService : IFinancialService
             Reference = request.Reference.Trim()
         };
         _db.FinancialMovements.Add(entity);
+        Log("Movimento financeiro", entity.Number, entity.Amount, entity.Description, null);
         _db.SaveChanges();
         return entity;
+    }
+
+    public IReadOnlyList<AccountPayable> SearchPayables(FinancialSearchRequest request)
+    {
+        UpdateOverdueStatuses();
+        var query = _db.AccountsPayable.AsNoTracking().AsQueryable();
+        if (request.FromUtc.HasValue) query = query.Where(x => x.DueDateUtc >= request.FromUtc.Value);
+        if (request.ToUtc.HasValue) query = query.Where(x => x.DueDateUtc <= request.ToUtc.Value);
+        if (request.Status.HasValue) query = query.Where(x => x.Status == request.Status.Value);
+        if (request.OnlyOverdue) query = query.Where(x => x.Status == FinancialStatus.Overdue || (x.BalanceAmount > 0 && x.DueDateUtc.Date < DateTime.UtcNow.Date));
+        if (!string.IsNullOrWhiteSpace(request.Term))
+        {
+            var term = request.Term.Trim().ToLower();
+            query = query.Where(x => x.Number.ToLower().Contains(term) || x.SupplierName.ToLower().Contains(term) || x.Description.ToLower().Contains(term));
+        }
+        return query.OrderBy(x => x.DueDateUtc).ToList();
+    }
+
+    public IReadOnlyList<AccountReceivable> SearchReceivables(FinancialSearchRequest request)
+    {
+        UpdateOverdueStatuses();
+        var query = _db.AccountsReceivable.AsNoTracking().AsQueryable();
+        if (request.FromUtc.HasValue) query = query.Where(x => x.DueDateUtc >= request.FromUtc.Value);
+        if (request.ToUtc.HasValue) query = query.Where(x => x.DueDateUtc <= request.ToUtc.Value);
+        if (request.Status.HasValue) query = query.Where(x => x.Status == request.Status.Value);
+        if (request.OnlyOverdue) query = query.Where(x => x.Status == FinancialStatus.Overdue || (x.BalanceAmount > 0 && x.DueDateUtc.Date < DateTime.UtcNow.Date));
+        if (!string.IsNullOrWhiteSpace(request.Term))
+        {
+            var term = request.Term.Trim().ToLower();
+            query = query.Where(x => x.Number.ToLower().Contains(term) || x.CustomerName.ToLower().Contains(term) || x.Description.ToLower().Contains(term));
+        }
+        return query.OrderBy(x => x.DueDateUtc).ToList();
+    }
+
+    public IReadOnlyList<Duplicate> SearchDuplicates(FinancialSearchRequest request)
+    {
+        UpdateOverdueStatuses();
+        var query = _db.Duplicates.AsNoTracking().AsQueryable();
+        if (request.FromUtc.HasValue) query = query.Where(x => x.DueDateUtc >= request.FromUtc.Value);
+        if (request.ToUtc.HasValue) query = query.Where(x => x.DueDateUtc <= request.ToUtc.Value);
+        if (request.Status.HasValue) query = query.Where(x => x.Status == request.Status.Value);
+        if (request.OnlyOverdue) query = query.Where(x => x.Status == FinancialStatus.Overdue || (x.BalanceAmount > 0 && x.DueDateUtc.Date < DateTime.UtcNow.Date));
+        if (!string.IsNullOrWhiteSpace(request.Term))
+        {
+            var term = request.Term.Trim().ToLower();
+            query = query.Where(x => x.Number.ToLower().Contains(term) || x.Description.ToLower().Contains(term));
+        }
+        return query.OrderBy(x => x.DueDateUtc).ToList();
+    }
+
+    public IReadOnlyList<FinancialSettlement> Settlements(Guid? documentId = null)
+    {
+        var query = _db.FinancialSettlements.AsNoTracking().AsQueryable();
+        if (documentId.HasValue)
+        {
+            query = query.Where(x => x.DuplicateId == documentId || x.AccountPayableId == documentId || x.AccountReceivableId == documentId);
+        }
+        return query.OrderByDescending(x => x.SettledAtUtc).ToList();
+    }
+
+    public IReadOnlyList<FinancialCategory> Categories(FinancialType? type = null)
+    {
+        EnsureDefaultCategories();
+        var query = _db.FinancialCategories.AsNoTracking().Where(x => x.IsActive);
+        if (type.HasValue) query = query.Where(x => x.Type == type.Value);
+        return query.OrderBy(x => x.Type).ThenBy(x => x.Name).ToList();
+    }
+
+    public FinancialCategory CreateCategory(string name, FinancialType type)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException("Nome da categoria obrigatorio.");
+        var entity = new FinancialCategory { Name = name.Trim(), Type = type };
+        _db.FinancialCategories.Add(entity);
+        Log("Cadastro categoria", name, 0, type.ToString(), null);
+        _db.SaveChanges();
+        return entity;
+    }
+
+    public FinancialDashboardSummary Dashboard(DateTime? todayUtc = null)
+    {
+        UpdateOverdueStatuses();
+        var today = (todayUtc ?? DateTime.UtcNow).Date;
+        var monthStart = new DateTime(today.Year, today.Month, 1);
+        var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
+        var payToday = _db.AccountsPayable.Where(x => x.BalanceAmount > 0 && x.DueDateUtc.Date == today).Sum(x => x.BalanceAmount);
+        var payOverdue = _db.AccountsPayable.Where(x => x.BalanceAmount > 0 && x.DueDateUtc.Date < today && x.Status != FinancialStatus.Cancelled).Sum(x => x.BalanceAmount);
+        var recToday = _db.AccountsReceivable.Where(x => x.BalanceAmount > 0 && x.DueDateUtc.Date == today).Sum(x => x.BalanceAmount);
+        var recOverdue = _db.AccountsReceivable.Where(x => x.BalanceAmount > 0 && x.DueDateUtc.Date < today && x.Status != FinancialStatus.Cancelled).Sum(x => x.BalanceAmount);
+        var received = _db.FinancialSettlements.Where(x => x.Type == FinancialType.Receivable && x.SettledAtUtc >= monthStart && x.SettledAtUtc <= monthEnd).Sum(x => x.Amount);
+        var paid = _db.FinancialSettlements.Where(x => x.Type == FinancialType.Payable && x.SettledAtUtc >= monthStart && x.SettledAtUtc <= monthEnd).Sum(x => x.Amount);
+        var flow = CashFlow(today, today.AddDays(6));
+        var forecast = _db.AccountsReceivable.Where(x => x.BalanceAmount > 0 && x.Status != FinancialStatus.Cancelled).Sum(x => x.BalanceAmount)
+            - _db.AccountsPayable.Where(x => x.BalanceAmount > 0 && x.Status != FinancialStatus.Cancelled).Sum(x => x.BalanceAmount);
+        var alerts = new List<string>();
+        if (payOverdue > 0) alerts.Add($"Contas a pagar vencidas: {payOverdue:C}");
+        if (recOverdue > 0) alerts.Add($"Clientes inadimplentes/contas vencidas: {recOverdue:C}");
+        if (forecast < 0) alerts.Add($"Saldo previsto negativo: {forecast:C}");
+        return new FinancialDashboardSummary(payToday, payOverdue, recToday, recOverdue, received, paid, forecast, flow, alerts);
+    }
+
+    public IReadOnlyList<FinancialCashFlowItem> CashFlow(DateTime fromUtc, DateTime toUtc)
+    {
+        var items = new List<FinancialCashFlowItem>();
+        decimal running = 0;
+        for (var day = fromUtc.Date; day <= toUtc.Date; day = day.AddDays(1))
+        {
+            var expectedIn = _db.AccountsReceivable.Where(x => x.BalanceAmount > 0 && x.DueDateUtc.Date == day && x.Status != FinancialStatus.Cancelled).Sum(x => x.BalanceAmount);
+            var expectedOut = _db.AccountsPayable.Where(x => x.BalanceAmount > 0 && x.DueDateUtc.Date == day && x.Status != FinancialStatus.Cancelled).Sum(x => x.BalanceAmount);
+            var realizedIn = _db.FinancialSettlements.Where(x => x.Type == FinancialType.Receivable && x.SettledAtUtc.Date == day).Sum(x => x.Amount);
+            var realizedOut = _db.FinancialSettlements.Where(x => x.Type == FinancialType.Payable && x.SettledAtUtc.Date == day).Sum(x => x.Amount);
+            var daily = realizedIn - realizedOut;
+            running += expectedIn - expectedOut + daily;
+            items.Add(new FinancialCashFlowItem(day, expectedIn, expectedOut, realizedIn, realizedOut, daily, running));
+        }
+        return items;
+    }
+
+    public byte[] ExportPdf(FinancialSearchRequest request)
+    {
+        var lines = FinancialLines(request);
+        return BuildPdf("Relatorio financeiro", lines);
+    }
+
+    public byte[] ExportExcel(FinancialSearchRequest request)
+    {
+        using var workbook = new ClosedXML.Excel.XLWorkbook();
+        var sheet = workbook.AddWorksheet("Financeiro");
+        var row = 1;
+        foreach (var line in FinancialLines(request))
+        {
+            sheet.Cell(row++, 1).Value = line;
+        }
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    public byte[] PrintReceipt(Guid settlementId, InternalPaperFormat format = InternalPaperFormat.Thermal80)
+    {
+        var s = _db.FinancialSettlements.AsNoTracking().First(x => x.Id == settlementId);
+        return new InternalDocumentService().GeneratePdf(new InternalDocumentRequest(
+            InternalDocumentKind.PaymentProof,
+            format,
+            settlementId.ToString("N")[..10],
+            string.Empty,
+            s.Type == FinancialType.Receivable ? "Recibo de recebimento" : "Comprovante de pagamento",
+            s.TotalAmount,
+            s.PaymentMethod,
+            s.Observation,
+            new[]
+            {
+                $"Data: {s.SettledAtUtc:dd/MM/yyyy HH:mm}",
+                $"Baixa: {s.Amount:C}",
+                $"Juros: {s.InterestAmount:C}",
+                $"Multa: {s.FineAmount:C}",
+                $"Desconto: {s.DiscountAmount:C}",
+                $"Total: {s.TotalAmount:C}"
+            }));
+    }
+
+    private static void EnsureCanSettle(FinancialStatus status, decimal balance, decimal amount)
+    {
+        if (status == FinancialStatus.Cancelled) throw new InvalidOperationException("Nao e permitido baixar documento cancelado.");
+        if (status == FinancialStatus.Paid) throw new InvalidOperationException("Documento ja baixado.");
+        if (amount <= 0) throw new InvalidOperationException("Valor da baixa deve ser maior que zero.");
+        if (amount > balance) throw new InvalidOperationException("Baixa maior que saldo.");
+    }
+
+    private static void ApplySettlement(AccountPayable entity, FinancialSettlementRequest request)
+    {
+        entity.PaidAmount += request.Amount;
+        entity.InterestAmount += request.Interest;
+        entity.FineAmount += request.Fine;
+        entity.DiscountAmount += request.Discount;
+        entity.BalanceAmount = Math.Max(0, entity.OriginalAmount + entity.InterestAmount + entity.FineAmount - entity.DiscountAmount - entity.PaidAmount);
+        entity.Status = entity.BalanceAmount <= 0 ? FinancialStatus.Paid : FinancialStatus.Partial;
+        entity.UserId = request.UserId;
+    }
+
+    private static void ApplySettlement(AccountReceivable entity, FinancialSettlementRequest request)
+    {
+        entity.PaidAmount += request.Amount;
+        entity.InterestAmount += request.Interest;
+        entity.FineAmount += request.Fine;
+        entity.DiscountAmount += request.Discount;
+        entity.BalanceAmount = Math.Max(0, entity.OriginalAmount + entity.InterestAmount + entity.FineAmount - entity.DiscountAmount - entity.PaidAmount);
+        entity.Status = entity.BalanceAmount <= 0 ? FinancialStatus.Paid : FinancialStatus.Partial;
+        entity.UserId = request.UserId;
+    }
+
+    private static FinancialSettlement BuildSettlement(
+        FinancialSettlementRequest request,
+        FinancialType type,
+        Guid? duplicateId = null,
+        Guid? accountPayableId = null,
+        Guid? accountReceivableId = null)
+    {
+        return new FinancialSettlement
+        {
+            DuplicateId = duplicateId,
+            AccountPayableId = accountPayableId,
+            AccountReceivableId = accountReceivableId,
+            Type = type,
+            Amount = request.Amount,
+            InterestAmount = request.Interest,
+            FineAmount = request.Fine,
+            DiscountAmount = request.Discount,
+            TotalAmount = request.Amount + request.Interest + request.Fine - request.Discount,
+            PaymentMethod = request.PaymentMethod.Trim(),
+            SettledAtUtc = DateTime.UtcNow,
+            UserId = request.UserId,
+            CashSessionId = request.CashSessionId,
+            Observation = request.Observation.Trim()
+        };
+    }
+
+    private void RegisterCashReceipt(AccountReceivable entity, FinancialSettlementRequest request)
+    {
+        if (!request.CashSessionId.HasValue || request.PaymentMethod.Equals("BOLETO", StringComparison.OrdinalIgnoreCase) || request.PaymentMethod.Equals("CHEQUE", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var session = _db.CashSessions.FirstOrDefault(x => x.Id == request.CashSessionId.Value && x.Status == CashSessionStatus.Aberto);
+        if (session is null)
+        {
+            return;
+        }
+
+        var method = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "DINHEIRO" : request.PaymentMethod.Trim().ToUpperInvariant();
+        var total = request.Amount + request.Interest + request.Fine - request.Discount;
+        _db.CashMovements.Add(new CashMovement
+        {
+            CashSessionId = session.Id,
+            Type = CashMovementType.DuplicateReceipt,
+            Origin = "Financeiro",
+            Amount = total,
+            Description = $"Recebimento {entity.Number}",
+            UserId = request.UserId,
+            PaymentMethod = method,
+            MovementAtUtc = DateTime.UtcNow,
+            Observation = request.Observation
+        });
+        session.TotalSalesAmount += total;
+        if (method == "DINHEIRO") { session.CashAmount += total; session.CurrentAmount = session.CashAmount; }
+        else if (method == "PIX") session.PixAmount += total;
+        else if (method == "CARTAO_DEBITO") session.DebitCardAmount += total;
+        else if (method == "CARTAO_CREDITO") session.CreditCardAmount += total;
+        session.UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    private void UpdateOverdueStatuses()
+    {
+        var today = DateTime.UtcNow.Date;
+        foreach (var payable in _db.AccountsPayable.Where(x => x.BalanceAmount > 0 && x.DueDateUtc.Date < today && x.Status == FinancialStatus.Open))
+        {
+            payable.Status = FinancialStatus.Overdue;
+            payable.UpdatedAtUtc = DateTime.UtcNow;
+        }
+        foreach (var receivable in _db.AccountsReceivable.Where(x => x.BalanceAmount > 0 && x.DueDateUtc.Date < today && x.Status == FinancialStatus.Open))
+        {
+            receivable.Status = FinancialStatus.Overdue;
+            receivable.UpdatedAtUtc = DateTime.UtcNow;
+        }
+        foreach (var duplicate in _db.Duplicates.Where(x => x.BalanceAmount > 0 && x.DueDateUtc.Date < today && x.Status == FinancialStatus.Open))
+        {
+            duplicate.Status = FinancialStatus.Overdue;
+            duplicate.UpdatedAtUtc = DateTime.UtcNow;
+        }
+        _db.SaveChanges();
+    }
+
+    private void EnsureDefaultCategories()
+    {
+        if (_db.FinancialCategories.Any())
+        {
+            return;
+        }
+
+        foreach (var name in new[] { "Venda a vista", "Venda a prazo", "Recebimento duplicata", "Outros recebimentos" })
+        {
+            _db.FinancialCategories.Add(new FinancialCategory { Name = name, Type = FinancialType.Receivable });
+        }
+        foreach (var name in new[] { "Fornecedor", "Funcionarios", "Aluguel", "Agua", "Luz", "Internet", "Impostos", "Transporte", "Outros pagamentos" })
+        {
+            _db.FinancialCategories.Add(new FinancialCategory { Name = name, Type = FinancialType.Payable });
+        }
+        _db.SaveChanges();
+    }
+
+    private List<string> FinancialLines(FinancialSearchRequest request)
+    {
+        var lines = new List<string> { "TIPO | NUMERO | VENCIMENTO | VALOR | PAGO | SALDO | STATUS" };
+        lines.AddRange(SearchPayables(request).Select(x => $"PAGAR | {x.Number} | {x.DueDateUtc:dd/MM/yyyy} | {x.OriginalAmount:C} | {x.PaidAmount:C} | {x.BalanceAmount:C} | {x.Status}"));
+        lines.AddRange(SearchReceivables(request).Select(x => $"RECEBER | {x.Number} | {x.DueDateUtc:dd/MM/yyyy} | {x.OriginalAmount:C} | {x.PaidAmount:C} | {x.BalanceAmount:C} | {x.Status}"));
+        lines.AddRange(SearchDuplicates(request).Select(x => $"DUP {x.Type} | {x.Number} | {x.DueDateUtc:dd/MM/yyyy} | {x.Amount:C} | {x.PaidAmount:C} | {x.BalanceAmount:C} | {x.Status}"));
+        return lines;
+    }
+
+    private static byte[] BuildPdf(string title, IEnumerable<string> lines)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(24);
+                page.Header().Text(title).SemiBold().FontSize(18);
+                page.Content().Column(column =>
+                {
+                    column.Spacing(4);
+                    foreach (var line in lines)
+                    {
+                        column.Item().Text(line);
+                    }
+                });
+            });
+        });
+        return document.GeneratePdf();
+    }
+
+    private void Log(string action, string document, decimal amount, string reason, Guid? userId)
+    {
+        _db.FinancialLogs.Add(new FinancialLog
+        {
+            UserId = userId,
+            LoggedAtUtc = DateTime.UtcNow,
+            Action = action,
+            Document = document,
+            Amount = amount,
+            Reason = reason.Trim()
+        });
     }
 
     public SaleCancellation CancelSale(SaleCancellationRequest request)
