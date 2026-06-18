@@ -1,8 +1,8 @@
 # MaterialPro Updates
 
-Arquivos de atualizacao gerados em 2026-06-18 15:19.
+Arquivos de atualizacao gerados em 2026-06-18 15:24.
 
-Versao publicada: 2026.06.18.1519.
+Versao publicada: 2026.06.18.1524.
 
 Inclui:
 - modulo de impressoras corrigido
@@ -14,6 +14,7 @@ Inclui:
 - central de atualizacoes mostra versao correta, conexao cliente-servidor, banco de dados e botao administrativo para forcar update
 - painel inicial mostra Cliente, Servidor, Rede/Banco e Administrador com acesso rapido para diagnosticar e forcar instalar/update
 - corrigido erro de SelectedIndex em listas vazias para nao travar ao abrir modulos
+- modulo Backup para administrador gerar ZIP com arquivos do sistema, configuracao do cliente e dump do banco MySQL
 
 Cliente:
 - updates/client/MaterialProClientUpdate.exe
