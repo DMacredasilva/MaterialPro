@@ -1,4 +1,5 @@
 ﻿{
-    "Version":  "1.0.0",
-    "PackagePath":  ".\\update-package.zip"
+    "PackageUrl":  "https://raw.githubusercontent.com/DMacredasilva/MaterialPro/main/updates/server/update-package.zip",
+    "PackagePath":  ".\\update-package.zip",
+    "Version":  "1.0.0"
 }
