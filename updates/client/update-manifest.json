@@ -1,5 +1,5 @@
-﻿{
-    "PackageUrl":  "https://raw.githubusercontent.com/DMacredasilva/MaterialPro/main/updates/client/update-package.zip",
-    "PackagePath":  ".\\update-package.zip",
-    "Version":  "1.0.0"
+{
+  "PackagePath": ".\\update-package.zip",
+  "Version": "1.0.0",
+  "PackageUrl": "https://raw.githubusercontent.com/DMacredasilva/MaterialPro/main/updates/client/update-package.zip"
 }
