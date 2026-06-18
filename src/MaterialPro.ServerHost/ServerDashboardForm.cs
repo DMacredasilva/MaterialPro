@@ -9,14 +9,17 @@ namespace MaterialPro.ServerHost;
 
 public sealed class ServerDashboardForm : Form
 {
-    private static readonly Color Ink = Color.FromArgb(25, 39, 52);
-    private static readonly Color Muted = Color.FromArgb(91, 105, 122);
-    private static readonly Color Surface = Color.FromArgb(242, 245, 248);
-    private static readonly Color Navy = Color.FromArgb(24, 52, 82);
-    private static readonly Color Blue = Color.FromArgb(38, 89, 143);
-    private static readonly Color Green = Color.FromArgb(45, 126, 86);
-    private static readonly Color Orange = Color.FromArgb(218, 124, 38);
-    private static readonly Color Brick = Color.FromArgb(165, 74, 52);
+    private static readonly Color Ink = Color.FromArgb(233, 241, 249);
+    private static readonly Color Muted = Color.FromArgb(152, 166, 184);
+    private static readonly Color Surface = Color.FromArgb(8, 20, 33);
+    private static readonly Color DarkCard = Color.FromArgb(17, 34, 52);
+    private static readonly Color DarkCardAlt = Color.FromArgb(22, 42, 62);
+    private static readonly Color Border = Color.FromArgb(39, 62, 84);
+    private static readonly Color Navy = Color.FromArgb(41, 112, 191);
+    private static readonly Color Blue = Color.FromArgb(28, 127, 239);
+    private static readonly Color Green = Color.FromArgb(88, 214, 110);
+    private static readonly Color Orange = Color.FromArgb(231, 132, 18);
+    private static readonly Color Brick = Color.FromArgb(202, 62, 49);
 
     private readonly MaterialProDbContext _db;
     private readonly Label _databaseValue = ValueLabel();
@@ -27,7 +30,7 @@ public sealed class ServerDashboardForm : Form
     private readonly Label _serverVersion = ValueLabel(13);
     private readonly Label _installPath = new() { Dock = DockStyle.Fill, ForeColor = Muted, AutoEllipsis = true };
     private readonly Label _adminStatus = new() { Dock = DockStyle.Bottom, Height = 28, ForeColor = Muted, AutoEllipsis = true };
-    private readonly TextBox _logBox = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White, BorderStyle = BorderStyle.None, Font = new Font("Consolas", 10F) };
+    private readonly TextBox _logBox = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = DarkCard, ForeColor = Ink, BorderStyle = BorderStyle.None, Font = new Font("Consolas", 10F) };
     private readonly PerformanceTile _memoryTile = new("Memoria do Windows", Green);
     private readonly PerformanceTile _cpuTile = new("CPU do servidor", Blue);
     private readonly PerformanceTile _diskTile = new("Disco do sistema", Orange);
@@ -49,17 +52,68 @@ public sealed class ServerDashboardForm : Form
         BackColor = Surface;
         Font = new Font("Segoe UI", 10F);
 
-        Controls.Add(BuildContent());
-        Controls.Add(BuildHeader());
+        Controls.Add(BuildShell());
 
         _timer.Tick += (_, _) => RefreshStatus();
         _timer.Start();
         RefreshStatus();
     }
 
+    private Control BuildShell()
+    {
+        var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Surface };
+        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 230));
+        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        shell.Controls.Add(BuildSidebar(), 0, 0);
+
+        var main = new Panel { Dock = DockStyle.Fill, BackColor = Surface };
+        main.Controls.Add(BuildContent());
+        main.Controls.Add(BuildHeader());
+        shell.Controls.Add(main, 1, 0);
+        return shell;
+    }
+
+    private Control BuildSidebar()
+    {
+        var panel = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(7, 18, 30), Padding = new Padding(16) };
+        panel.Paint += (_, e) =>
+        {
+            using var pen = new Pen(Border);
+            e.Graphics.DrawLine(pen, panel.Width - 1, 0, panel.Width - 1, panel.Height);
+        };
+
+        var footer = new Label
+        {
+            Text = $"Servidor\r\n{Environment.MachineName}\r\n\r\nOnline\r\nIP local: {Environment.MachineName}",
+            Dock = DockStyle.Bottom,
+            Height = 160,
+            ForeColor = Muted,
+            Font = new Font("Segoe UI", 9.5F),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        var menu = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(0, 24, 0, 0) };
+        foreach (var item in new[] { "Dashboard", "Banco de Dados", "Backups", "Atualizacoes", "Logs", "Diagnosticos", "Seguranca", "Suporte" })
+        {
+            menu.Controls.Add(SidebarItem(item, item == "Dashboard"));
+        }
+
+        panel.Controls.Add(menu);
+        panel.Controls.Add(footer);
+        panel.Controls.Add(new Label
+        {
+            Text = "MaterialPro\r\nSERVER PANEL",
+            Dock = DockStyle.Top,
+            Height = 78,
+            ForeColor = Ink,
+            Font = new Font("Segoe UI", 18F, FontStyle.Bold)
+        });
+        return panel;
+    }
+
     private Control BuildHeader()
     {
-        var panel = new Panel { Dock = DockStyle.Top, Height = 118, Padding = new Padding(24, 18, 24, 12), BackColor = Color.White };
+        var panel = new Panel { Dock = DockStyle.Top, Height = 118, Padding = new Padding(24, 18, 24, 12), BackColor = Surface };
         var actions = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 480, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
         actions.Controls.Add(Button("Fechar painel", Brick, (_, _) => Close(), 130));
         actions.Controls.Add(Button("Atualizar", Blue, (_, _) => RefreshStatus(), 120));
@@ -86,7 +140,7 @@ public sealed class ServerDashboardForm : Form
 
     private Control BuildContent()
     {
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 6 };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 6, BackColor = Surface };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 226));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
@@ -468,12 +522,15 @@ Erro: {error}
 
     private static Panel Card(Color accent)
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Margin = new Padding(0, 0, 14, 14) };
+        var panel = new Panel { Dock = DockStyle.Fill, BackColor = DarkCard, Margin = new Padding(0, 0, 14, 14) };
         panel.Paint += (_, e) =>
         {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var fill = new SolidBrush(panel.BackColor);
+            e.Graphics.FillRectangle(fill, panel.ClientRectangle);
             using var brush = new SolidBrush(accent);
             e.Graphics.FillRectangle(brush, 0, 0, 7, panel.Height);
-            using var pen = new Pen(Color.FromArgb(214, 222, 232));
+            using var pen = new Pen(Border);
             e.Graphics.DrawRectangle(pen, 0, 0, panel.Width - 1, panel.Height - 1);
         };
         return panel;
@@ -505,13 +562,31 @@ Erro: {error}
         return button;
     }
 
+    private static Button SidebarItem(string text, bool active)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Width = 198,
+            Height = 38,
+            BackColor = active ? Blue : Color.FromArgb(7, 18, 30),
+            ForeColor = active ? Color.White : Color.FromArgb(204, 216, 229),
+            FlatStyle = FlatStyle.Flat,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(14, 0, 0, 0),
+            Margin = new Padding(0, 0, 0, 8)
+        };
+        button.FlatAppearance.BorderSize = 0;
+        return button;
+    }
+
     private static Button ActionButton(string title, string subtitle, Color color, EventHandler click)
     {
         var button = new Button
         {
             Text = $"{title}\r\n{subtitle}",
             Dock = DockStyle.Fill,
-            BackColor = color,
+            BackColor = Color.FromArgb(38, color),
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
             TextAlign = ContentAlignment.MiddleLeft,
@@ -519,7 +594,8 @@ Erro: {error}
             Padding = new Padding(14, 6, 10, 6),
             Margin = new Padding(0, 0, 12, 0)
         };
-        button.FlatAppearance.BorderSize = 0;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderColor = Color.FromArgb(70, color);
         button.Click += click;
         return button;
     }
@@ -567,7 +643,7 @@ Erro: {error}
             _accent = accent;
             Title = title;
             Dock = DockStyle.Fill;
-            BackColor = Color.White;
+            BackColor = DarkCard;
             Margin = new Padding(0, 0, 12, 0);
             DoubleBuffered = true;
             MinimumSize = new Size(160, 150);
@@ -592,9 +668,9 @@ Erro: {error}
             base.OnPaint(e);
             var g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.Clear(Color.White);
+            g.Clear(DarkCardAlt);
 
-            using var border = new Pen(Color.FromArgb(214, 222, 232));
+            using var border = new Pen(Border);
             g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
 
             using var titleFont = new Font("Segoe UI", 9.5F, FontStyle.Bold);
@@ -610,7 +686,7 @@ Erro: {error}
 
             var ringSize = Math.Min(58, Math.Max(42, Width / 5));
             var ring = new Rectangle(Width - ringSize - 18, 30, ringSize, ringSize);
-            using var ringTrack = new Pen(Color.FromArgb(231, 236, 243), 8F) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
+            using var ringTrack = new Pen(Color.FromArgb(45, 63, 84), 8F) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
             using var ringPen = new Pen(_accent, 8F) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
             g.DrawArc(ringTrack, ring, -90, 360);
             g.DrawArc(ringPen, ring, -90, (float)(_value / 100d * 360d));
@@ -621,7 +697,7 @@ Erro: {error}
             g.DrawString(centerText, centerFont, accent, ring.Left + (ring.Width - centerSize.Width) / 2, ring.Top + (ring.Height - centerSize.Height) / 2);
 
             var chart = new Rectangle(14, Height - 54, Width - 28, 36);
-            using var gridPen = new Pen(Color.FromArgb(235, 239, 244));
+            using var gridPen = new Pen(Color.FromArgb(48, 70, 94));
             g.DrawLine(gridPen, chart.Left, chart.Top + chart.Height / 2, chart.Right, chart.Top + chart.Height / 2);
             g.DrawRectangle(gridPen, chart);
 

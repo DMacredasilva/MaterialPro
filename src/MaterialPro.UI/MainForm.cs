@@ -15,6 +15,8 @@ public sealed class MainForm : Form
     private static readonly Color SafetyOrange = Color.FromArgb(218, 124, 38);
     private static readonly Color SteelBlue = Color.FromArgb(38, 89, 143);
     private static readonly Color StockGreen = Color.FromArgb(45, 126, 86);
+    private static readonly Color CardBorder = Color.FromArgb(214, 222, 232);
+    private static readonly Color CardHover = Color.FromArgb(250, 252, 255);
 
     private readonly Label _brandTitleLabel;
     private readonly Label _brandSubtitleLabel;
@@ -102,12 +104,12 @@ public sealed class MainForm : Form
         new MaterialProDatabaseInitializer(_db, _authService).EnsureCreated();
 
         var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
-        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 340));
+        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 292));
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Controls.Add(shell);
 
         var leftPane = BuildBrandPane(out _brandTitleLabel, out _brandSubtitleLabel, out _brandLogoBox);
-        _contentPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(34), BackColor = Surface, AutoScroll = true };
+        _contentPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24), BackColor = Surface, AutoScroll = true };
         shell.Controls.Add(leftPane, 0, 0);
         shell.Controls.Add(_contentPanel, 1, 0);
 
@@ -176,7 +178,8 @@ public sealed class MainForm : Form
     {
         _contentPanel.Controls.Clear();
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 4 };
+        var root = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 5 };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -220,7 +223,7 @@ public sealed class MainForm : Form
         });
         root.Controls.Add(header);
 
-        var metrics = new TableLayoutPanel { Dock = DockStyle.Top, Height = 94, ColumnCount = 4, Padding = new Padding(0, 0, 0, 18) };
+        var metrics = new TableLayoutPanel { Dock = DockStyle.Top, Height = 110, ColumnCount = 4, Padding = new Padding(0, 0, 0, 18) };
         metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
         metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
         metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
@@ -231,6 +234,7 @@ public sealed class MainForm : Form
         metrics.Controls.Add(Metric("Base da loja", DateTime.Now.ToString("dd/MM/yyyy"), Navy), 3, 0);
         root.Controls.Add(metrics);
         root.Controls.Add(SystemStatusPanel());
+        root.Controls.Add(BuildOverviewPanel());
 
         var modules = new FlowLayoutPanel
         {
@@ -241,6 +245,7 @@ public sealed class MainForm : Form
             WrapContents = true,
             Padding = new Padding(0, 14, 0, 20)
         };
+        modules.Resize += (_, _) => AdjustModuleTiles(modules);
 
         AddModule(modules, SystemModules.Products, ModuleTile("Produtos", "Cadastro, estoque minimo, importacao e relatorios.", "CADASTRO", StockGreen, () =>
         {
@@ -355,6 +360,24 @@ public sealed class MainForm : Form
             }
         }));
         root.Controls.Add(modules);
+        AdjustModuleTiles(modules);
+    }
+
+    private Control BuildOverviewPanel()
+    {
+        var productCount = SafeCount(() => _productService.List().Count);
+        var customerCount = SafeCount(() => _customerService.Search(new CustomerSearchRequest()).Count);
+        var supplierCount = SafeCount(() => _supplierService.Search(new SupplierSearchRequest()).Count);
+        var dbOk = CanConnectToDatabase();
+
+        var grid = new TableLayoutPanel { Dock = DockStyle.Top, Height = 214, ColumnCount = 3, Padding = new Padding(0, 0, 0, 18) };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 31));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 31));
+        grid.Controls.Add(new MiniChartCard("Movimento da loja", "Visao rapida para acompanhar rotina", SteelBlue, [12, 18, 14, 24, 20, 30, 26]), 0, 0);
+        grid.Controls.Add(new MiniChartCard("Cadastro ativo", $"Produtos {productCount} | Clientes {customerCount} | Fornec. {supplierCount}", StockGreen, [productCount, customerCount, supplierCount]), 1, 0);
+        grid.Controls.Add(new MiniChartCard("Sistema", dbOk ? "Servidor e banco conectados" : "Verifique conexao com servidor", dbOk ? StockGreen : Color.FromArgb(170, 70, 50), dbOk ? [80, 90, 75, 95] : [20, 16, 24, 18]), 2, 0);
+        return grid;
     }
 
     private Control SystemStatusPanel()
@@ -411,6 +434,18 @@ public sealed class MainForm : Form
 
     private bool IsAdmin() => _currentUser?.Role == UserRole.Admin;
 
+    private static int SafeCount(Func<int> count)
+    {
+        try
+        {
+            return count();
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
     private static UpdateStatusSnapshot SafeUpdateStatus(string channel)
     {
         try
@@ -425,26 +460,10 @@ public sealed class MainForm : Form
 
     private static Button StatusCard(string title, string status, string action, Color accent, Action open)
     {
-        var button = new Button
+        var button = new DashboardTile(title, status, action, "OK", accent)
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(0, 0, 14, 0),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            ForeColor = Ink,
-            TextAlign = ContentAlignment.TopLeft,
-            Padding = new Padding(18, 12, 16, 10),
-            Font = new Font("Segoe UI", 11F, FontStyle.Bold),
-            Text = $"{title}\r\n{status}\r\n{action}"
-        };
-        button.FlatAppearance.BorderColor = Color.FromArgb(205, 214, 224);
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(248, 250, 252);
-        button.Paint += (_, e) =>
-        {
-            using var brush = new SolidBrush(accent);
-            e.Graphics.FillRectangle(brush, 0, 0, 7, button.Height);
-            using var pen = new Pen(Color.FromArgb(235, 239, 244));
-            e.Graphics.DrawLine(pen, 18, 40, button.Width - 18, 40);
+            Margin = new Padding(0, 0, 14, 0)
         };
         button.Click += (_, _) => open();
         return button;
@@ -598,30 +617,27 @@ public sealed class MainForm : Form
 
     private static Button ModuleTile(string title, string description, string tag, Color accent, Action open)
     {
-        var button = new Button
+        var icon = title.Length >= 2 ? title[..2].ToUpperInvariant() : title.ToUpperInvariant();
+        var button = new DashboardTile(title, description, $"Abrir {title}", icon, accent)
         {
-            Width = 298,
-            Height = 126,
+            Width = 300,
+            Height = 148,
             Margin = new Padding(0, 0, 18, 18),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.White,
-            ForeColor = Ink,
-            TextAlign = ContentAlignment.TopLeft,
-            Padding = new Padding(20, 13, 18, 12),
-            Font = new Font("Segoe UI", 11F, FontStyle.Bold),
-            Text = $"{tag}  |  {title}\r\n{description}"
-        };
-        button.FlatAppearance.BorderColor = Color.FromArgb(205, 214, 224);
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(248, 250, 252);
-        button.Paint += (_, e) =>
-        {
-            using var brush = new SolidBrush(accent);
-            e.Graphics.FillRectangle(brush, 0, 0, 7, button.Height);
-            using var pen = new Pen(Color.FromArgb(235, 239, 244));
-            e.Graphics.DrawLine(pen, 18, 42, button.Width - 18, 42);
+            Tag = tag
         };
         button.Click += (_, _) => open();
         return button;
+    }
+
+    private static void AdjustModuleTiles(FlowLayoutPanel panel)
+    {
+        var usableWidth = Math.Max(300, panel.ClientSize.Width - panel.Padding.Horizontal - 20);
+        var columns = Math.Max(1, usableWidth / 320);
+        var tileWidth = Math.Max(260, (usableWidth - ((columns - 1) * 18)) / columns);
+        foreach (Control control in panel.Controls)
+        {
+            control.Width = tileWidth;
+        }
     }
 
     private void AddModule(FlowLayoutPanel panel, string moduleKey, Button tile)
@@ -636,12 +652,12 @@ public sealed class MainForm : Form
 
     private static Panel Metric(string label, string value, Color accent)
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Margin = new Padding(0, 0, 14, 0), Padding = new Padding(16, 10, 16, 10) };
+        var panel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Margin = new Padding(0, 0, 14, 0), Padding = new Padding(18, 12, 18, 12) };
         panel.Controls.Add(new Label
         {
             Text = value,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 18F, FontStyle.Bold),
+            Font = new Font("Segoe UI", 19F, FontStyle.Bold),
             ForeColor = accent
         });
         panel.Controls.Add(new Label
@@ -651,7 +667,16 @@ public sealed class MainForm : Form
             Height = 24,
             ForeColor = Muted
         });
-        panel.Controls.Add(new Panel { Dock = DockStyle.Left, Width = 5, BackColor = accent });
+        panel.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var pen = new Pen(CardBorder);
+            e.Graphics.DrawRectangle(pen, 0, 0, panel.Width - 1, panel.Height - 1);
+            using var brush = new SolidBrush(Color.FromArgb(30, accent));
+            e.Graphics.FillEllipse(brush, panel.Width - 62, 18, 42, 42);
+            using var accentBrush = new SolidBrush(accent);
+            e.Graphics.FillRectangle(accentBrush, 0, 0, 6, panel.Height);
+        };
         return panel;
     }
 
@@ -687,5 +712,114 @@ public sealed class MainForm : Form
             BackColor = color,
             ForeColor = Color.White
         };
+    }
+
+    private sealed class DashboardTile : Button
+    {
+        private readonly string _title;
+        private readonly string _description;
+        private readonly string _action;
+        private readonly string _icon;
+        private readonly Color _accent;
+
+        public DashboardTile(string title, string description, string action, string icon, Color accent)
+        {
+            _title = title;
+            _description = description;
+            _action = action;
+            _icon = icon;
+            _accent = accent;
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            BackColor = Color.White;
+            ForeColor = Ink;
+            Cursor = Cursors.Hand;
+            Text = string.Empty;
+            DoubleBuffered = true;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(ClientRectangle.Contains(PointToClient(Cursor.Position)) ? CardHover : Color.White);
+
+            using var border = new Pen(CardBorder);
+            g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+            using var strip = new SolidBrush(_accent);
+            g.FillRectangle(strip, 0, 0, 6, Height);
+
+            using var glow = new SolidBrush(Color.FromArgb(28, _accent));
+            g.FillEllipse(glow, 20, 18, 54, 54);
+            using var iconBrush = new SolidBrush(_accent);
+            g.FillEllipse(iconBrush, 26, 24, 42, 42);
+            using var iconFont = new Font("Segoe UI", 9F, FontStyle.Bold);
+            using var white = new SolidBrush(Color.White);
+            var iconSize = g.MeasureString(_icon, iconFont);
+            g.DrawString(_icon, iconFont, white, 47 - iconSize.Width / 2, 45 - iconSize.Height / 2);
+
+            using var titleFont = new Font("Segoe UI", 11.5F, FontStyle.Bold);
+            using var descriptionFont = new Font("Segoe UI", 9.5F, FontStyle.Regular);
+            using var actionFont = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+            using var ink = new SolidBrush(Ink);
+            using var muted = new SolidBrush(Muted);
+            using var accent = new SolidBrush(_accent);
+            g.DrawString(_title, titleFont, ink, new RectangleF(86, 18, Width - 104, 24));
+            g.DrawString(_description, descriptionFont, muted, new RectangleF(86, 48, Width - 104, Height - 86));
+            g.DrawString(_action, actionFont, accent, new RectangleF(20, Height - 30, Width - 40, 20));
+        }
+    }
+
+    private sealed class MiniChartCard : Panel
+    {
+        private readonly string _title;
+        private readonly string _subtitle;
+        private readonly Color _accent;
+        private readonly int[] _values;
+
+        public MiniChartCard(string title, string subtitle, Color accent, int[] values)
+        {
+            _title = title;
+            _subtitle = subtitle;
+            _accent = accent;
+            _values = values.Length == 0 ? [1] : values;
+            Dock = DockStyle.Fill;
+            BackColor = Color.White;
+            Margin = new Padding(0, 0, 14, 0);
+            DoubleBuffered = true;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var border = new Pen(CardBorder);
+            g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+
+            using var titleFont = new Font("Segoe UI", 12F, FontStyle.Bold);
+            using var subFont = new Font("Segoe UI", 9F);
+            using var titleBrush = new SolidBrush(Ink);
+            using var mutedBrush = new SolidBrush(Muted);
+            using var accentBrush = new SolidBrush(_accent);
+            g.FillRectangle(accentBrush, 0, 0, 6, Height);
+            g.DrawString(_title, titleFont, titleBrush, new PointF(20, 16));
+            g.DrawString(_subtitle, subFont, mutedBrush, new RectangleF(20, 46, Width - 40, 34));
+
+            var chart = new Rectangle(22, 92, Width - 44, Height - 118);
+            using var gridPen = new Pen(Color.FromArgb(232, 237, 244));
+            g.DrawLine(gridPen, chart.Left, chart.Top + chart.Height / 2, chart.Right, chart.Top + chart.Height / 2);
+            var max = Math.Max(1, _values.Max());
+            var gap = 10;
+            var barWidth = Math.Max(10, (chart.Width - gap * (_values.Length - 1)) / _values.Length);
+            for (var i = 0; i < _values.Length; i++)
+            {
+                var barHeight = Math.Max(8, (int)(_values[i] / (double)max * chart.Height));
+                var x = chart.Left + i * (barWidth + gap);
+                var y = chart.Bottom - barHeight;
+                using var bar = new SolidBrush(Color.FromArgb(210, _accent));
+                g.FillRectangle(bar, x, y, barWidth, barHeight);
+            }
+        }
     }
 }
