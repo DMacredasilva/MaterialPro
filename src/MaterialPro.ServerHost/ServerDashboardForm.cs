@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using MaterialPro.Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.VisualBasic.Devices;
 
 namespace MaterialPro.ServerHost;
 
@@ -25,14 +26,21 @@ public sealed class ServerDashboardForm : Form
     private readonly Label _serverVersion = ValueLabel(13);
     private readonly Label _installPath = new() { Dock = DockStyle.Fill, ForeColor = Muted, AutoEllipsis = true };
     private readonly TextBox _logBox = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White, BorderStyle = BorderStyle.None, Font = new Font("Consolas", 10F) };
+    private readonly PerformanceTile _memoryTile = new("Memoria do Windows", Green);
+    private readonly PerformanceTile _cpuTile = new("CPU do servidor", Blue);
+    private readonly PerformanceTile _diskTile = new("Disco do sistema", Orange);
+    private readonly PerformanceTile _processTile = new("MaterialPro em RAM", Navy);
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 5000 };
+    private TimeSpan _lastCpuTime = Process.GetCurrentProcess().TotalProcessorTime;
+    private DateTime _lastCpuAt = DateTime.UtcNow;
 
     public ServerDashboardForm(MaterialProDbContext db)
     {
         _db = db;
         Text = "MaterialPro - Painel do Servidor";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(980, 680);
+        MinimumSize = new Size(1080, 780);
+        Size = new Size(1180, 820);
         BackColor = Surface;
         Font = new Font("Segoe UI", 10F);
 
@@ -73,10 +81,11 @@ public sealed class ServerDashboardForm : Form
 
     private Control BuildContent()
     {
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 4 };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 122));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18), ColumnCount = 1, RowCount = 5 };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 226));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var metrics = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4 };
@@ -87,16 +96,43 @@ public sealed class ServerDashboardForm : Form
         metrics.Controls.Add(MetricCard("Vendas", _salesValue, Navy), 3, 0);
         root.Controls.Add(metrics, 0, 0);
 
+        root.Controls.Add(BuildPerformancePanel(), 0, 1);
+
         var versions = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
         versions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         versions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         versions.Controls.Add(InfoCard("Cliente instalado", _clientVersion, "Versao publicada no GitHub e pacote de update do cliente.", Blue), 0, 0);
         versions.Controls.Add(InfoCard("Servidor instalado", _serverVersion, "Versao publicada no GitHub e pacote de update do servidor.", Orange), 1, 0);
-        root.Controls.Add(versions, 0, 1);
+        root.Controls.Add(versions, 0, 2);
 
-        root.Controls.Add(BuildPathCard(), 0, 2);
-        root.Controls.Add(BuildLogCard(), 0, 3);
+        root.Controls.Add(BuildPathCard(), 0, 3);
+        root.Controls.Add(BuildLogCard(), 0, 4);
         return root;
+    }
+
+    private Control BuildPerformancePanel()
+    {
+        var panel = Card(Navy);
+        panel.Padding = new Padding(20, 14, 20, 16);
+        var header = new Label
+        {
+            Text = "Desempenho do servidor",
+            Dock = DockStyle.Top,
+            Height = 30,
+            ForeColor = Ink,
+            Font = new Font("Segoe UI", 12F, FontStyle.Bold)
+        };
+
+        var grid = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, Padding = new Padding(0, 8, 0, 0) };
+        for (var i = 0; i < 4; i++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        grid.Controls.Add(_memoryTile, 0, 0);
+        grid.Controls.Add(_cpuTile, 1, 0);
+        grid.Controls.Add(_diskTile, 2, 0);
+        grid.Controls.Add(_processTile, 3, 0);
+
+        panel.Controls.Add(grid);
+        panel.Controls.Add(header);
+        return panel;
     }
 
     private Control BuildPathCard()
@@ -145,6 +181,39 @@ public sealed class ServerDashboardForm : Form
         _logBox.Text = diagnostics.Length > 0
             ? diagnostics
             : $"Servidor iniciado em modo painel.{Environment.NewLine}Ultima verificacao: {DateTime.Now:dd/MM/yyyy HH:mm:ss}";
+
+        RefreshPerformance();
+    }
+
+    private void RefreshPerformance()
+    {
+        var computer = new ComputerInfo();
+        var totalMemory = Math.Max(1, computer.TotalPhysicalMemory);
+        var availableMemory = computer.AvailablePhysicalMemory;
+        var usedMemory = totalMemory - availableMemory;
+        var memoryPercent = (double)usedMemory / totalMemory * 100;
+        _memoryTile.Update(memoryPercent, $"{FormatBytes(usedMemory)} / {FormatBytes(totalMemory)}");
+
+        var process = Process.GetCurrentProcess();
+        var now = DateTime.UtcNow;
+        var cpuTime = process.TotalProcessorTime;
+        var elapsedMs = Math.Max(1, (now - _lastCpuAt).TotalMilliseconds);
+        var cpuDeltaMs = (cpuTime - _lastCpuTime).TotalMilliseconds;
+        var cpuPercent = Math.Clamp(cpuDeltaMs / (elapsedMs * Environment.ProcessorCount) * 100, 0, 100);
+        _lastCpuAt = now;
+        _lastCpuTime = cpuTime;
+        _cpuTile.Update(cpuPercent, $"{cpuPercent:0}% do processo");
+
+        var driveRoot = Path.GetPathRoot(AppContext.BaseDirectory) ?? "C:\\";
+        var drive = new DriveInfo(driveRoot);
+        var diskPercent = drive.IsReady && drive.TotalSize > 0
+            ? (double)(drive.TotalSize - drive.AvailableFreeSpace) / drive.TotalSize * 100
+            : 0;
+        _diskTile.Update(diskPercent, $"{FormatBytes(drive.TotalSize - drive.AvailableFreeSpace)} / {FormatBytes(drive.TotalSize)}");
+
+        var processMb = process.WorkingSet64 / 1024d / 1024d;
+        var processPercent = Math.Clamp(process.WorkingSet64 / (double)totalMemory * 100, 0, 100);
+        _processTile.Update(processPercent, $"{processMb:0} MB usados");
     }
 
     private static int SafeCount(Func<int> count)
@@ -252,6 +321,95 @@ Erro: {error}
         if (Directory.Exists(path))
         {
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
+        }
+    }
+
+    private static string FormatBytes(double bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var value = bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return $"{value:0.##} {units[unit]}";
+    }
+
+    private sealed class PerformanceTile : Panel
+    {
+        private readonly Color _accent;
+        private readonly List<double> _history = [];
+        private double _value;
+        private string _detail = string.Empty;
+
+        public PerformanceTile(string title, Color accent)
+        {
+            _accent = accent;
+            Title = title;
+            Dock = DockStyle.Fill;
+            BackColor = Color.White;
+            Margin = new Padding(0, 0, 12, 0);
+            DoubleBuffered = true;
+            MinimumSize = new Size(160, 150);
+        }
+
+        public string Title { get; }
+
+        public void Update(double value, string detail)
+        {
+            _value = Math.Clamp(value, 0, 100);
+            _detail = detail;
+            _history.Add(_value);
+            if (_history.Count > 36)
+            {
+                _history.RemoveAt(0);
+            }
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(Color.White);
+
+            using var border = new Pen(Color.FromArgb(214, 222, 232));
+            g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+
+            using var titleFont = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            using var valueFont = new Font("Segoe UI", 18F, FontStyle.Bold);
+            using var detailFont = new Font("Segoe UI", 8.5F);
+            using var ink = new SolidBrush(Ink);
+            using var muted = new SolidBrush(Muted);
+            using var accent = new SolidBrush(_accent);
+
+            g.DrawString(Title, titleFont, ink, new PointF(14, 12));
+            g.DrawString($"{_value:0}%", valueFont, accent, new PointF(14, 38));
+            g.DrawString(_detail, detailFont, muted, new RectangleF(14, 78, Width - 28, 30));
+
+            var chart = new Rectangle(14, Height - 54, Width - 28, 36);
+            using var gridPen = new Pen(Color.FromArgb(235, 239, 244));
+            g.DrawLine(gridPen, chart.Left, chart.Top + chart.Height / 2, chart.Right, chart.Top + chart.Height / 2);
+            g.DrawRectangle(gridPen, chart);
+
+            if (_history.Count < 2)
+            {
+                return;
+            }
+
+            var points = _history.Select((sample, index) =>
+            {
+                var x = chart.Left + index * (chart.Width / Math.Max(1f, _history.Count - 1));
+                var y = chart.Bottom - (float)(sample / 100d * chart.Height);
+                return new PointF(x, y);
+            }).ToArray();
+
+            using var linePen = new Pen(_accent, 2.2F);
+            g.DrawLines(linePen, points);
         }
     }
 }
