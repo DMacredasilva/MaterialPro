@@ -121,15 +121,13 @@ public static class AutoUpdateRunner
                 return false;
             }
 
-            var remotePath = Path.Combine(Path.GetTempPath(), $"materialpro-remote-manifest-{channel}.json");
-            File.WriteAllText(remotePath, JsonSerializer.Serialize(remote, new JsonSerializerOptions { WriteIndented = true }));
-            File.Copy(remotePath, Path.Combine(root, "update-manifest.json"), true);
+            var package = DownloadLatestPackage(channel);
 
             var process = Process.GetCurrentProcess();
             var startInfo = new ProcessStartInfo
             {
                 FileName = updater,
-                Arguments = "apply update-package.zip",
+                Arguments = $"apply \"{package}\" --target \"{root}\"",
                 UseShellExecute = false,
                 WorkingDirectory = root
             };
