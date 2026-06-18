@@ -41,7 +41,7 @@ public sealed class PdvForm : Form
         _discountBox = MoneyField();
         _paymentBox = new ComboBox { Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
         _paymentBox.Items.AddRange(["DINHEIRO", "PIX", "CARTAO_DEBITO", "CARTAO_CREDITO", "PRAZO"]);
-        _paymentBox.SelectedIndex = 0;
+        UiKit.SelectIfAvailable(_paymentBox, 0);
 
         _itemsGrid = new DataGridView
         {

@@ -149,3 +149,77 @@ SET @sql = IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_sc
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 SET @sql = IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'Suppliers' AND index_name = 'IX_Suppliers_WhatsApp') = 0, 'CREATE INDEX IX_Suppliers_WhatsApp ON Suppliers (WhatsApp)', 'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+CREATE TABLE IF NOT EXISTS `impressoras` (
+  `id` char(36) NOT NULL,
+  `CreatedAtUtc` datetime(6) NOT NULL,
+  `UpdatedAtUtc` datetime(6) NULL,
+  `ativa` tinyint(1) NOT NULL DEFAULT 1,
+  `nome` varchar(180) NOT NULL DEFAULT '',
+  `driver` varchar(180) NOT NULL DEFAULT '',
+  `porta` varchar(120) NOT NULL DEFAULT '',
+  `tipo` int NOT NULL DEFAULT 0,
+  `status` int NOT NULL DEFAULT 1,
+  `padrao_windows` tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  INDEX `IX_impressoras_nome` (`nome`),
+  INDEX `IX_impressoras_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `configuracoes_impressao` (
+  `id` char(36) NOT NULL,
+  `CreatedAtUtc` datetime(6) NOT NULL,
+  `UpdatedAtUtc` datetime(6) NULL,
+  `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+  `computador` varchar(120) NOT NULL DEFAULT '',
+  `tipo_documento` int NOT NULL,
+  `impressora_id` char(36) NULL,
+  `largura_papel` int NOT NULL DEFAULT 2,
+  `margem_esquerda` decimal(18,2) NOT NULL DEFAULT 4,
+  `margem_direita` decimal(18,2) NOT NULL DEFAULT 4,
+  `margem_superior` decimal(18,2) NOT NULL DEFAULT 4,
+  `margem_inferior` decimal(18,2) NOT NULL DEFAULT 4,
+  `cortar_papel` tinyint(1) NOT NULL DEFAULT 1,
+  `abrir_gaveta` tinyint(1) NOT NULL DEFAULT 0,
+  `imprimir_logo` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  INDEX `IX_configuracoes_impressao_tipo` (`tipo_documento`),
+  INDEX `IX_configuracoes_impressao_computador` (`computador`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `filas_impressao` (
+  `id` char(36) NOT NULL,
+  `CreatedAtUtc` datetime(6) NOT NULL,
+  `UpdatedAtUtc` datetime(6) NULL,
+  `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+  `tipo_documento` int NOT NULL,
+  `referencia_id` char(36) NULL,
+  `impressora_id` char(36) NULL,
+  `status` int NOT NULL DEFAULT 1,
+  `tentativas` int NOT NULL DEFAULT 0,
+  `conteudo` longtext NOT NULL,
+  `erro` varchar(1000) NOT NULL DEFAULT '',
+  `impresso_em` datetime(6) NULL,
+  PRIMARY KEY (`id`),
+  INDEX `IX_filas_impressao_status` (`status`),
+  INDEX `IX_filas_impressao_documento` (`tipo_documento`),
+  INDEX `IX_filas_impressao_referencia` (`referencia_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `logs_impressao` (
+  `id` char(36) NOT NULL,
+  `CreatedAtUtc` datetime(6) NOT NULL,
+  `UpdatedAtUtc` datetime(6) NULL,
+  `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+  `usuario_id` char(36) NULL,
+  `tipo_documento` int NOT NULL,
+  `referencia_id` char(36) NULL,
+  `impressora` varchar(180) NOT NULL DEFAULT '',
+  `status` int NOT NULL,
+  `mensagem` varchar(1000) NOT NULL DEFAULT '',
+  `data_log` datetime(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `IX_logs_impressao_data` (`data_log`),
+  INDEX `IX_logs_impressao_documento` (`tipo_documento`),
+  INDEX `IX_logs_impressao_usuario` (`usuario_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

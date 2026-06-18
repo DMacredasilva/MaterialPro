@@ -1,6 +1,7 @@
 using MaterialPro.Application;
 using MaterialPro.Domain;
 using MaterialPro.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 
 namespace MaterialPro.UI;
 
@@ -46,9 +47,12 @@ public sealed class MainForm : Form
     private readonly IFinancialService _financialService;
     private readonly IReportsCenterService _reportsCenterService;
     private readonly IPrintService _printService;
+    private readonly IPrinterManagementService _printerManagementService;
     private readonly MaterialProDbContext _db;
     private readonly IDbfImportService _dbfImportService;
+    private readonly MaterialProSettings _settings;
     private AppUser? _currentUser;
+    private string? _currentSessionKey;
 
     public MainForm()
     {
@@ -58,13 +62,13 @@ public sealed class MainForm : Form
         BackColor = Surface;
         Font = new Font("Segoe UI", 10F);
 
-        var settings = MaterialProSettingsLoader.Load(AppContext.BaseDirectory);
-        if (string.IsNullOrWhiteSpace(settings.ConnectionString))
+        _settings = MaterialProSettingsLoader.Load(AppContext.BaseDirectory);
+        if (string.IsNullOrWhiteSpace(_settings.ConnectionString))
         {
             throw new InvalidOperationException("ConnectionString do MySQL não configurada.");
         }
 
-        _db = MaterialProDbContextFactory.CreateMySql(settings.ConnectionString);
+        _db = MaterialProDbContextFactory.CreateMySql(_settings.ConnectionString);
         var hasher = new Sha256PasswordHasher();
         var repository = new EfUserRepository(_db);
         _securityService = new SecurityService(_db);
@@ -92,6 +96,7 @@ public sealed class MainForm : Form
         _cashReportService = new CashReportService(_db);
         _financialService = new FinancialService(_db);
         _reportsCenterService = new ReportsCenterService(_db);
+        _printerManagementService = new PrinterManagementService(_db);
         _dbfImportService = new DbfImportService(_db);
         new MaterialProDatabaseInitializer(_db, _authService).EnsureCreated();
 
@@ -170,13 +175,20 @@ public sealed class MainForm : Form
     {
         _contentPanel.Controls.Clear();
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        var root = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 4 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         _contentPanel.Controls.Add(root);
 
-        var header = new Panel { Dock = DockStyle.Top, Height = 108, Padding = new Padding(0, 0, 0, 18), BackColor = Surface };
+        var header = new Panel { Dock = DockStyle.Top, Height = 126, Padding = new Padding(0, 0, 0, 18), BackColor = Surface };
+        var headerActions = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 270, Height = 42, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
+        headerActions.Controls.Add(PrimaryButton("Fechar programa", Color.FromArgb(170, 70, 50)));
+        headerActions.Controls[0].Click += (_, _) => Close();
+        headerActions.Controls.Add(PrimaryButton("Deslogar", SafetyOrange));
+        headerActions.Controls[1].Click += (_, _) => Logout();
+        header.Controls.Add(headerActions);
         header.Controls.Add(new Label
         {
             Text = $"Bem-vindo, {_currentUser?.FullName ?? "Operador"}",
@@ -204,94 +216,123 @@ public sealed class MainForm : Form
         metrics.Controls.Add(Metric("Fornecedores ativos", _supplierService.Search(new SupplierSearchRequest()).Count.ToString(), SafetyOrange), 2, 0);
         metrics.Controls.Add(Metric("Base da loja", DateTime.Now.ToString("dd/MM/yyyy"), Navy), 3, 0);
         root.Controls.Add(metrics);
+        root.Controls.Add(SystemStatusPanel());
 
         var modules = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            MinimumSize = new Size(0, 520),
+            AutoScroll = false,
             WrapContents = true,
-            Padding = new Padding(0, 4, 0, 20)
+            Padding = new Padding(0, 14, 0, 20)
         };
 
-        modules.Controls.Add(ModuleTile("Produtos", "Cadastro, estoque minimo, importacao e relatorios.", "CADASTRO", StockGreen, () =>
+        AddModule(modules, SystemModules.Products, ModuleTile("Produtos", "Cadastro, estoque minimo, importacao e relatorios.", "CADASTRO", StockGreen, () =>
         {
             using var form = new ProductsForm(_productService, _inventoryService, _productImportService, _productReportService, _supplierService);
             form.ShowDialog(this);
             ShowDashboard();
         }));
-        modules.Controls.Add(ModuleTile("Estoque", "Entradas, saidas, ajustes, inventario, reservas e transferencias.", "ESTOQUE", StockGreen, () =>
+        AddModule(modules, SystemModules.Stock, ModuleTile("Estoque", "Entradas, saidas, ajustes, inventario, reservas e transferencias.", "ESTOQUE", StockGreen, () =>
         {
             using var form = new StockForm(_inventoryService, _stockImportService, _stockReportService);
             form.ShowDialog(this);
             ShowDashboard();
         }));
-        modules.Controls.Add(ModuleTile("Clientes", "Ficha, limite de credito, bloqueio e historicos.", "CRM", SteelBlue, () =>
+        AddModule(modules, SystemModules.Customers, ModuleTile("Clientes", "Ficha, limite de credito, bloqueio e historicos.", "CRM", SteelBlue, () =>
         {
             using var form = new CustomersForm(_customerService, _customerReportService);
             form.ShowDialog(this);
             ShowDashboard();
         }));
-        modules.Controls.Add(ModuleTile("Fornecedores", "Compras, produtos vinculados, contas a pagar e relatorios.", "COMPRAS", SafetyOrange, () =>
+        AddModule(modules, SystemModules.Suppliers, ModuleTile("Fornecedores", "Compras, produtos vinculados, contas a pagar e relatorios.", "COMPRAS", SafetyOrange, () =>
         {
             using var form = new SuppliersForm(_supplierService, _supplierImportService, _supplierReportService);
             form.ShowDialog(this);
             ShowDashboard();
         }));
-        modules.Controls.Add(ModuleTile("PDV", "Venda rapida, pagamento, caixa, cupom e segunda via.", "VENDA", Color.FromArgb(28, 120, 84), () =>
+        AddModule(modules, SystemModules.Pdv, ModuleTile("PDV", "Venda rapida, pagamento, caixa, cupom e segunda via.", "VENDA", Color.FromArgb(28, 120, 84), () =>
         {
             if (_currentUser is null) return;
             using var form = new PdvForm(_pdvService, _productService, _customerService, _currentUser);
             form.ShowDialog(this);
             ShowDashboard();
         }));
-        modules.Controls.Add(ModuleTile("Caixa", "Abertura, sangria, suprimento, fechamento e historico.", "CAIXA", Color.FromArgb(23, 52, 87), () =>
+        AddModule(modules, SystemModules.Cash, ModuleTile("Caixa", "Abertura, sangria, suprimento, fechamento e historico.", "CAIXA", Color.FromArgb(23, 52, 87), () =>
         {
             if (_currentUser is null) return;
             using var form = new CashForm(_cashService, _cashReportService, _currentUser);
             form.ShowDialog(this);
             ShowDashboard();
         }));
-        modules.Controls.Add(ModuleTile("Financeiro", "Contas a pagar, receber, duplicatas, baixas e fluxo de caixa.", "FIN", Color.FromArgb(44, 104, 110), () =>
+        AddModule(modules, SystemModules.Financial, ModuleTile("Financeiro", "Contas a pagar, receber, duplicatas, baixas e fluxo de caixa.", "FIN", Color.FromArgb(44, 104, 110), () =>
         {
             if (_currentUser is null) return;
             using var form = new FinancialForm(_financialService, _currentUser);
             form.ShowDialog(this);
             ShowDashboard();
         }));
-        modules.Controls.Add(ModuleTile("Relatorios", "Central com vendas, caixa, estoque, financeiro e sistema.", "REL", Color.FromArgb(90, 84, 154), () =>
+        AddModule(modules, SystemModules.Reports, ModuleTile("Relatorios", "Central com vendas, caixa, estoque, financeiro e sistema.", "REL", Color.FromArgb(90, 84, 154), () =>
         {
             if (_currentUser is null) return;
             using var form = new ReportsCenterForm(_reportsCenterService, _currentUser);
             form.ShowDialog(this);
             ShowDashboard();
         }));
-        modules.Controls.Add(ModuleTile("Documentos internos", "Cupom simples, recibo, orcamento e comprovantes.", "VENDA", SafetyOrange, () =>
+        AddModule(modules, SystemModules.Updates, ModuleTile("Atualizacoes", "Cliente e servidor com status da instalacao e pacote de update.", "SISTEMA", Color.FromArgb(42, 111, 128), () =>
         {
-            using var form = new InternalDocumentsForm(_internalDocumentService, _printService);
+            using var form = new UpdateStatusForm(_db, _currentUser);
             form.ShowDialog(this);
         }));
-        modules.Controls.Add(ModuleTile("Cancelamento", "Cancelamento controlado com comprovante e auditoria.", "CAIXA", Color.FromArgb(170, 70, 50), () =>
+        AddModule(modules, SystemModules.Backup, ModuleTile("Backup", "Copia dos arquivos do sistema e banco MySQL para emergencia.", "SISTEMA", Color.FromArgb(42, 111, 128), () =>
+        {
+            using var form = new BackupForm(_currentUser, _settings.ConnectionString);
+            form.ShowDialog(this);
+        }));
+        AddModule(modules, SystemModules.UserAccess, ModuleTile("Acesso por usuario", "Administrador libera quais modulos cada usuario pode ver.", "ADM", Color.FromArgb(92, 70, 150), () =>
+        {
+            using var form = new UserAccessForm(_db, new SecurityService(_db));
+            form.ShowDialog(this);
+            ShowDashboard();
+        }));
+        AddModule(modules, SystemModules.RemoteSupport, ModuleTile("Suporte remoto assistido", "ID, senha temporaria, nivel de acesso e ferramentas de conexao.", "SUPORTE", Color.FromArgb(44, 104, 110), () =>
+        {
+            using var form = new RemoteAccessForm();
+            form.ShowDialog(this);
+        }));
+        AddModule(modules, SystemModules.InternalDocuments, ModuleTile("Documentos internos", "Cupom, recibo, orcamento e previa antes de imprimir.", "VENDA", SafetyOrange, () =>
+        {
+            using var form = new InternalDocumentsForm(_internalDocumentService, _printService, _storeProfileService, _currentUser);
+            form.ShowDialog(this);
+        }));
+        AddModule(modules, SystemModules.Printers, ModuleTile("Impressoras", "Detectar, configurar, testar, fila e logs de impressao.", "SISTEMA", Color.FromArgb(42, 111, 128), () =>
+        {
+            using var form = new PrintersForm(_printerManagementService, _currentUser);
+            form.ShowDialog(this);
+        }));
+        AddModule(modules, SystemModules.Cancellation, ModuleTile("Cancelamento", "Cancelamento controlado com comprovante e auditoria.", "CAIXA", Color.FromArgb(170, 70, 50), () =>
         {
             if (_currentUser is null) return;
             using var form = new SaleCancellationForm(_salesService, _saleCancellationService, _currentUser);
             form.ShowDialog(this);
         }));
-        modules.Controls.Add(ModuleTile("Nota avulsa", "Documento nao fiscal para atendimento rapido.", "DOC", Color.FromArgb(74, 93, 115), () =>
+        AddModule(modules, SystemModules.NonFiscalNote, ModuleTile("Nota avulsa", "Documento nao fiscal para atendimento rapido.", "DOC", Color.FromArgb(74, 93, 115), () =>
         {
             using var form = new NonFiscalNoteForm(_storeProfileService, _nonFiscalNoteService);
             form.ShowDialog(this);
         }));
-        modules.Controls.Add(ModuleTile("Importacao DBF", "Entrada de dados legados de produtos, clientes e vendas.", "DADOS", Color.FromArgb(90, 101, 120), () =>
+        AddModule(modules, SystemModules.DbfImport, ModuleTile("Importacao DBF", "Entrada de dados legados de produtos, clientes e vendas.", "DADOS", Color.FromArgb(90, 101, 120), () =>
         {
             using var form = new DbfImportForm(_dbfImportService);
             form.ShowDialog(this);
         }));
-        modules.Controls.Add(ModuleTile("Seguranca", "Auditoria, sessoes e tentativas de acesso.", "ADM", Color.FromArgb(92, 70, 150), () =>
+        AddModule(modules, SystemModules.Security, ModuleTile("Seguranca", "Auditoria, sessoes e tentativas de acesso.", "ADM", Color.FromArgb(92, 70, 150), () =>
         {
             using var form = new SecurityCenterForm(_securityService);
             form.ShowDialog(this);
         }));
-        modules.Controls.Add(ModuleTile("Dados da loja", "Nome, CNPJ, telefone, endereco e identidade da empresa.", "LOJA", Navy, () =>
+        AddModule(modules, SystemModules.StoreProfile, ModuleTile("Dados da loja", "Nome, CNPJ, telefone, endereco, logo e identidade.", "LOJA", Navy, () =>
         {
             using var form = new StoreProfileForm(_storeProfileService);
             if (form.ShowDialog(this) == DialogResult.OK)
@@ -300,6 +341,99 @@ public sealed class MainForm : Form
             }
         }));
         root.Controls.Add(modules);
+    }
+
+    private Control SystemStatusPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 160,
+            ColumnCount = 4,
+            Padding = new Padding(0, 0, 0, 18)
+        };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+
+        var dbOk = CanConnectToDatabase();
+        var clientStatus = SafeUpdateStatus("client");
+        var serverStatus = SafeUpdateStatus("server");
+        panel.Controls.Add(StatusCard("Cliente", $"Instalada: {clientStatus.LocalVersion}", $"GitHub: {clientStatus.RemoteVersion}", SteelBlue, () =>
+        {
+            using var form = new UpdateStatusForm(_db, _currentUser);
+            form.ShowDialog(this);
+        }), 0, 0);
+        panel.Controls.Add(StatusCard("Servidor", $"Instalada: {serverStatus.LocalVersion}", $"GitHub: {serverStatus.RemoteVersion}", Color.FromArgb(42, 111, 128), () =>
+        {
+            using var form = new UpdateStatusForm(_db, _currentUser);
+            form.ShowDialog(this);
+        }), 1, 0);
+        panel.Controls.Add(StatusCard("Rede e banco", dbOk ? "Cliente conectado ao servidor" : "Sem conexao confirmada", dbOk ? "Banco MySQL respondendo" : "Clique para diagnosticar", dbOk ? StockGreen : Color.FromArgb(170, 70, 50), () =>
+        {
+            using var form = new UpdateStatusForm(_db, _currentUser);
+            form.ShowDialog(this);
+        }), 2, 0);
+        panel.Controls.Add(StatusCard("Administrador", IsAdmin() ? "Pode forcar instalar" : "Apenas consulta", "Abrir central de update", SafetyOrange, () =>
+        {
+            using var form = new UpdateStatusForm(_db, _currentUser);
+            form.ShowDialog(this);
+        }), 3, 0);
+        return panel;
+    }
+
+    private bool CanConnectToDatabase()
+    {
+        try
+        {
+            return _db.Database.CanConnect();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private bool IsAdmin() => _currentUser?.Role == UserRole.Admin;
+
+    private static UpdateStatusSnapshot SafeUpdateStatus(string channel)
+    {
+        try
+        {
+            return AutoUpdateRunner.GetStatus(channel);
+        }
+        catch
+        {
+            return new UpdateStatusSnapshot(channel, string.Empty, "desconhecida", "indisponivel", string.Empty, false, false, "Nao foi possivel consultar.");
+        }
+    }
+
+    private static Button StatusCard(string title, string status, string action, Color accent, Action open)
+    {
+        var button = new Button
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 14, 0),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            ForeColor = Ink,
+            TextAlign = ContentAlignment.TopLeft,
+            Padding = new Padding(18, 12, 16, 10),
+            Font = new Font("Segoe UI", 11F, FontStyle.Bold),
+            Text = $"{title}\r\n{status}\r\n{action}"
+        };
+        button.FlatAppearance.BorderColor = Color.FromArgb(205, 214, 224);
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(248, 250, 252);
+        button.Paint += (_, e) =>
+        {
+            using var brush = new SolidBrush(accent);
+            e.Graphics.FillRectangle(brush, 0, 0, 7, button.Height);
+            using var pen = new Pen(Color.FromArgb(235, 239, 244));
+            e.Graphics.DrawLine(pen, 18, 40, button.Width - 18, 40);
+        };
+        button.Click += (_, _) => open();
+        return button;
     }
 
     private Control BuildBrandPane(out Label title, out Label subtitle)
@@ -359,8 +493,42 @@ public sealed class MainForm : Form
         }
 
         _currentUser = result.User;
+        _currentSessionKey = result.SessionKey;
         _passwordBox.Clear();
         ShowDashboard();
+    }
+
+    private void Logout()
+    {
+        CloseCurrentSession();
+        _currentUser = null;
+        _currentSessionKey = null;
+        _usernameBox.Clear();
+        _passwordBox.Clear();
+        ShowLogin();
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        CloseCurrentSession();
+        base.OnFormClosing(e);
+    }
+
+    private void CloseCurrentSession()
+    {
+        if (string.IsNullOrWhiteSpace(_currentSessionKey))
+        {
+            return;
+        }
+
+        try
+        {
+            _securityService.CloseSession(_currentSessionKey);
+        }
+        catch
+        {
+            // A sessao pode ja ter sido encerrada em outra rotina.
+        }
     }
 
     private void ApplyStoreProfile()
@@ -378,27 +546,39 @@ public sealed class MainForm : Form
     {
         var button = new Button
         {
-            Width = 280,
-            Height = 138,
+            Width = 298,
+            Height = 126,
             Margin = new Padding(0, 0, 18, 18),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.White,
             ForeColor = Ink,
             TextAlign = ContentAlignment.TopLeft,
-            Padding = new Padding(18, 14, 18, 14),
+            Padding = new Padding(20, 13, 18, 12),
             Font = new Font("Segoe UI", 11F, FontStyle.Bold),
-            Text = $"{tag}\r\n{title}\r\n{description}"
+            Text = $"{tag}  |  {title}\r\n{description}"
         };
-        button.FlatAppearance.BorderColor = Color.FromArgb(210, 218, 228);
+        button.FlatAppearance.BorderColor = Color.FromArgb(205, 214, 224);
         button.FlatAppearance.MouseOverBackColor = Color.FromArgb(248, 250, 252);
         button.Paint += (_, e) =>
         {
             using var brush = new SolidBrush(accent);
             e.Graphics.FillRectangle(brush, 0, 0, 7, button.Height);
+            using var pen = new Pen(Color.FromArgb(235, 239, 244));
+            e.Graphics.DrawLine(pen, 18, 42, button.Width - 18, 42);
         };
         button.Click += (_, _) => open();
         return button;
     }
+
+    private void AddModule(FlowLayoutPanel panel, string moduleKey, Button tile)
+    {
+        if (HasModule(moduleKey))
+        {
+            panel.Controls.Add(tile);
+        }
+    }
+
+    private bool HasModule(string moduleKey) => _currentUser?.EffectiveModules().Contains(moduleKey, StringComparer.OrdinalIgnoreCase) == true;
 
     private static Panel Metric(string label, string value, Color accent)
     {

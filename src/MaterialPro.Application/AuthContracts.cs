@@ -191,6 +191,10 @@ public sealed record ReportRow(IReadOnlyDictionary<string, object?> Values);
 public sealed record ReportResult(ReportDefinition Definition, ReportFilterRequest Filters, IReadOnlyList<string> Columns, IReadOnlyList<ReportRow> Rows, IReadOnlyDictionary<string, decimal> Totals);
 public sealed record ReportsDashboardSummary(decimal TotalSales, decimal TotalReceived, decimal TotalReceivable, decimal TotalPayable, decimal GrossProfit, decimal StockValue, IReadOnlyList<ProductSalesSummary> BestProducts, IReadOnlyList<CustomerPurchaseSummary> BestCustomers);
 public sealed record CustomerPurchaseSummary(Guid CustomerId, string Name, decimal TotalAmount, int SaleCount);
+public sealed record PrinterDiscoveryItem(string Name, string Driver, string Port, MaterialPro.Domain.PrinterKind Kind, MaterialPro.Domain.PrinterDeviceStatus Status, bool IsWindowsDefault);
+public sealed record PrintConfigurationRequest(string ComputerName, MaterialPro.Domain.PrintDocumentType DocumentType, Guid? PrinterId, MaterialPro.Domain.PrinterKind PaperKind, decimal LeftMargin, decimal RightMargin, decimal TopMargin, decimal BottomMargin, bool CutPaper, bool OpenDrawer, bool PrintLogo);
+public sealed record PrintDocumentRequest(MaterialPro.Domain.PrintDocumentType DocumentType, Guid? ReferenceId, string Title, IEnumerable<string> Lines, Guid? UserId = null, Guid? PrinterId = null, bool ForceFail = false);
+public sealed record ProductLabelRequest(string Name, string Code, string Barcode, decimal Price, string Unit);
 public sealed record SaleCancellationSummary(Guid Id, Guid SaleId, string ReceiptNumber, string Reason, string UserName, DateTime CancelledAtUtc, decimal TotalAmount, string Observation);
 public enum InternalDocumentKind
 {
@@ -198,14 +202,23 @@ public enum InternalDocumentKind
     SaleReceipt = 2,
     Budget = 3,
     PaymentProof = 4,
-    SaleSecondCopy = 5
+    SaleSecondCopy = 5,
+    ReturnProof = 6,
+    CancellationProof = 7,
+    CashOpening = 8,
+    CashWithdrawal = 9,
+    CashSupply = 10,
+    CashClosing = 11,
+    A4Report = 12,
+    ProductLabel = 13
 }
 
 public enum InternalPaperFormat
 {
     Thermal58 = 1,
     Thermal80 = 2,
-    A4 = 3
+    A4 = 3,
+    Label = 4
 }
 
 public sealed record InternalDocumentRequest(
@@ -217,7 +230,12 @@ public sealed record InternalDocumentRequest(
     decimal TotalAmount,
     string PaymentMethod,
     string Notes,
-    IEnumerable<string> Lines);
+    IEnumerable<string> Lines,
+    string StoreName = "",
+    string StoreDocument = "",
+    string StorePhone = "",
+    string StoreAddress = "",
+    string LogoPath = "");
 public sealed record NonFiscalNoteItemRequest(string Description, decimal Quantity, decimal UnitPrice);
 public sealed record NonFiscalNoteRequest(
     string Number,
@@ -487,6 +505,49 @@ public interface IReportsCenterService
 public interface IPrintService
 {
     void PrintText(string title, IEnumerable<string> lines);
+}
+
+public interface IPrinterDiscoveryService
+{
+    IReadOnlyList<PrinterDiscoveryItem> Detect();
+}
+
+public interface IPrinterStatusService
+{
+    PrinterDeviceStatus GetStatus(string printerName);
+}
+
+public interface IPrintQueueService
+{
+    IReadOnlyList<PrintQueueItem> Queue(PrintQueueStatus? status = null);
+    PrintQueueItem Reprint(Guid queueItemId, Guid? userId = null);
+    PrintQueueItem Cancel(Guid queueItemId, Guid? userId = null);
+}
+
+public interface IPrinterManagementService
+{
+    IReadOnlyList<PrinterDevice> SyncInstalledPrinters();
+    IReadOnlyList<PrinterDevice> Printers();
+    PrinterDevice SetDefault(Guid printerId);
+    PrintConfiguration SaveConfiguration(PrintConfigurationRequest request);
+    IReadOnlyList<PrintConfiguration> Configurations();
+    PrintQueueItem Print(PrintDocumentRequest request);
+    PrintQueueItem Reprint(Guid queueItemId, Guid? userId = null);
+    PrintQueueItem CancelQueueItem(Guid queueItemId, Guid? userId = null);
+    IReadOnlyList<PrintQueueItem> Queue(PrintQueueStatus? status = null);
+    IReadOnlyList<PrintLog> Logs();
+}
+
+public interface IReceiptTemplateService
+{
+    string BuildReceipt(PrintDocumentRequest request, InternalPaperFormat format = InternalPaperFormat.Thermal80);
+    string BuildProductLabel(ProductLabelRequest request);
+}
+
+public interface IBarcodeService
+{
+    string Code128(string value);
+    bool IsValidEan13(string value);
 }
 
 public interface IInternalDocumentService

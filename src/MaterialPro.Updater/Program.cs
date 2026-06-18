@@ -10,17 +10,24 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
-        var root = AppContext.BaseDirectory;
+        var updaterRoot = AppContext.BaseDirectory;
         var command = args.FirstOrDefault()?.ToLowerInvariant() ?? "apply";
-        var logPath = Path.Combine(root, "materialpro-update.log");
+        var channel = DetectChannel();
+        var installRoot = ResolveInstallRoot(channel, args);
+        var logPath = Path.Combine(updaterRoot, "materialpro-update.log");
 
         try
         {
             WaitForParentExit(logPath);
+            if (command == "apply" && NeedsElevation(installRoot) && TryRelaunchElevated(args, logPath))
+            {
+                return 0;
+            }
+
             var exitCode = command switch
             {
-                "check" => Check(root, logPath),
-                "apply" => Apply(root, args.Skip(1).FirstOrDefault() ?? "update-package.zip", logPath),
+                "check" => Check(updaterRoot, installRoot, channel, logPath),
+                "apply" => Apply(updaterRoot, installRoot, channel, PackageArg(args) ?? "update-package.zip", logPath),
                 _ => WriteUsage()
             };
             RestartApplicationIfRequested(exitCode, logPath);
@@ -89,19 +96,25 @@ internal static class Program
         }
     }
 
-    private static int Check(string root, string logPath)
+    private static int Check(string updaterRoot, string installRoot, string channel, string logPath)
     {
-        var manifestPath = Path.Combine(root, "update-manifest.json");
+        var manifestPath = FirstExistingPath(
+            Path.Combine(updaterRoot, "update-manifest.json"),
+            Path.Combine(installRoot, "update-manifest.json"));
+
         if (!File.Exists(manifestPath))
         {
-            var channel = DetectChannel();
             var manifestUrl = RemoteUrl(channel, "update-manifest.json");
             Log(logPath, $"Manifesto local nao encontrado. Consultando {manifestUrl}");
             var manifestText = DownloadString(manifestUrl, logPath);
+            manifestPath = Path.Combine(updaterRoot, "update-manifest.json");
             File.WriteAllText(manifestPath, manifestText);
         }
 
         var manifest = ParseManifest(File.ReadAllText(manifestPath));
+        Log(logPath, $"Canal: {channel}");
+        Log(logPath, $"Pasta do updater: {updaterRoot}");
+        Log(logPath, $"Pasta alvo da instalacao: {installRoot}");
         Log(logPath, $"Versao disponivel: {manifest.Version}");
         Log(logPath, $"Pacote: {manifest.PackagePath}");
         if (!string.IsNullOrWhiteSpace(manifest.PackageUrl))
@@ -111,7 +124,7 @@ internal static class Program
         return 0;
     }
 
-    private static int Apply(string root, string? packagePath, string logPath)
+    private static int Apply(string updaterRoot, string installRoot, string channel, string? packagePath, string logPath)
     {
         if (string.IsNullOrWhiteSpace(packagePath))
         {
@@ -119,9 +132,18 @@ internal static class Program
             return 1;
         }
 
-        var installRoot = root;
+        if (!Directory.Exists(installRoot))
+        {
+            Log(logPath, $"Pasta de instalacao nao encontrada: {installRoot}");
+            Log(logPath, "Instale primeiro o MaterialPro ou informe o destino com: apply update-package.zip --target \"C:\\Program Files\\MaterialPro\\Client\"");
+            return 1;
+        }
+
+        StopMaterialProProcesses(channel, logPath);
         var backupRoot = Path.Combine(installRoot, "backups", $"update-{DateTime.Now:yyyyMMdd-HHmmss}");
         Directory.CreateDirectory(backupRoot);
+        Log(logPath, $"Canal: {channel}");
+        Log(logPath, $"Updater executado de: {updaterRoot}");
         Log(logPath, $"Iniciando atualizacao em {installRoot}");
 
         foreach (var file in Directory.GetFiles(installRoot, "*", SearchOption.AllDirectories))
@@ -138,7 +160,7 @@ internal static class Program
         }
 
         Log(logPath, $"Backup pre-atualizacao salvo em {backupRoot}");
-        var resolvedPackage = ResolveOrDownloadPackage(root, packagePath, logPath);
+        var resolvedPackage = ResolveOrDownloadPackage(updaterRoot, installRoot, channel, packagePath, logPath);
         if (!File.Exists(resolvedPackage))
         {
             Log(logPath, $"Pacote nao encontrado: {resolvedPackage}");
@@ -177,17 +199,25 @@ internal static class Program
         return 0;
     }
 
-    private static string ResolveOrDownloadPackage(string root, string packagePath, string logPath)
+    private static string ResolveOrDownloadPackage(string updaterRoot, string installRoot, string channel, string packagePath, string logPath)
     {
-        var resolvedPackage = Path.GetFullPath(Path.IsPathRooted(packagePath) ? packagePath : Path.Combine(root, packagePath));
+        var resolvedPackage = Path.GetFullPath(Path.IsPathRooted(packagePath) ? packagePath : Path.Combine(updaterRoot, packagePath));
         if (File.Exists(resolvedPackage))
         {
             Log(logPath, $"Usando pacote local: {resolvedPackage}");
             return resolvedPackage;
         }
 
-        var channel = DetectChannel();
-        var manifestPath = Path.Combine(root, "update-manifest.json");
+        var installPackage = Path.Combine(installRoot, packagePath);
+        if (!Path.IsPathRooted(packagePath) && File.Exists(installPackage))
+        {
+            Log(logPath, $"Usando pacote local da instalacao: {installPackage}");
+            return installPackage;
+        }
+
+        var manifestPath = FirstExistingPath(
+            Path.Combine(updaterRoot, "update-manifest.json"),
+            Path.Combine(installRoot, "update-manifest.json"));
         UpdateManifest manifest = new();
         if (File.Exists(manifestPath))
         {
@@ -198,6 +228,7 @@ internal static class Program
             var manifestUrl = RemoteUrl(channel, "update-manifest.json");
             Log(logPath, $"Baixando manifesto: {manifestUrl}");
             var manifestText = DownloadString(manifestUrl, logPath);
+            manifestPath = Path.Combine(updaterRoot, "update-manifest.json");
             File.WriteAllText(manifestPath, manifestText);
             manifest = ParseManifest(manifestText);
         }
@@ -215,6 +246,192 @@ internal static class Program
     {
         var processName = Path.GetFileName(Environment.ProcessPath ?? string.Empty);
         return processName.Contains("server", StringComparison.OrdinalIgnoreCase) ? "server" : "client";
+    }
+
+    private static string ResolveInstallRoot(string channel, string[] args)
+    {
+        var explicitTarget = TargetArg(args);
+        if (!string.IsNullOrWhiteSpace(explicitTarget))
+        {
+            return Path.GetFullPath(explicitTarget);
+        }
+
+        var envTarget = channel.Equals("server", StringComparison.OrdinalIgnoreCase)
+            ? Environment.GetEnvironmentVariable("MATERIALPRO_SERVER_ROOT")
+            : Environment.GetEnvironmentVariable("MATERIALPRO_CLIENT_ROOT");
+        if (!string.IsNullOrWhiteSpace(envTarget))
+        {
+            return Path.GetFullPath(envTarget);
+        }
+
+        var updaterRoot = Path.GetFullPath(AppContext.BaseDirectory);
+        if (LooksLikeInstallRoot(updaterRoot, channel))
+        {
+            return updaterRoot;
+        }
+
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var defaultRoot = Path.Combine(programFiles, "MaterialPro", channel.Equals("server", StringComparison.OrdinalIgnoreCase) ? "Server" : "Client");
+        return Path.GetFullPath(defaultRoot);
+    }
+
+    private static bool LooksLikeInstallRoot(string path, string channel)
+    {
+        var exe = channel.Equals("server", StringComparison.OrdinalIgnoreCase)
+            ? "MaterialPro.ServerHost.exe"
+            : "MaterialPro.UI.exe";
+        return File.Exists(Path.Combine(path, exe));
+    }
+
+    private static string? PackageArg(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            return null;
+        }
+
+        var candidate = args[1];
+        return candidate.StartsWith("--", StringComparison.OrdinalIgnoreCase) ? null : candidate;
+    }
+
+    private static string? TargetArg(string[] args)
+    {
+        for (var i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (arg.Equals("--target", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                return args[i + 1];
+            }
+
+            if (arg.StartsWith("--target=", StringComparison.OrdinalIgnoreCase))
+            {
+                return arg["--target=".Length..].Trim('"');
+            }
+        }
+
+        return null;
+    }
+
+    private static bool NeedsElevation(string installRoot)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        return installRoot.StartsWith(programFiles, StringComparison.OrdinalIgnoreCase)
+            && !CanWriteToDirectory(installRoot);
+    }
+
+    private static bool TryRelaunchElevated(string[] args, string logPath)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        var exe = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(exe))
+        {
+            return false;
+        }
+
+        try
+        {
+            Log(logPath, "Permissao administrativa necessaria. Solicitando elevacao do Windows.");
+            var arguments = args.Length == 0 ? string.Empty : string.Join(" ", args.Select(QuoteArgument));
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                Arguments = arguments,
+                UseShellExecute = true,
+                Verb = "runas",
+                WorkingDirectory = AppContext.BaseDirectory
+            });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log(logPath, $"Nao foi possivel solicitar permissao administrativa: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static string QuoteArgument(string value)
+    {
+        return value.Contains(' ') ? $"\"{value.Replace("\"", "\\\"")}\"" : value;
+    }
+
+    private static bool CanWriteToDirectory(string directory)
+    {
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var testFile = Path.Combine(directory, $".materialpro-write-test-{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(testFile, "test");
+            File.Delete(testFile);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void StopMaterialProProcesses(string channel, string logPath)
+    {
+        if (channel.Equals("server", StringComparison.OrdinalIgnoreCase))
+        {
+            TryRun("sc.exe", "stop MaterialProServer", logPath);
+            StopProcess("MaterialPro.ServerHost", logPath);
+            StopProcess("MaterialPro.UI", logPath);
+            return;
+        }
+
+        StopProcess("MaterialPro.UI", logPath);
+    }
+
+    private static void StopProcess(string processName, string logPath)
+    {
+        foreach (var process in Process.GetProcessesByName(processName))
+        {
+            try
+            {
+                Log(logPath, $"Fechando processo {processName} ({process.Id}).");
+                process.Kill(true);
+                process.WaitForExit(10000);
+            }
+            catch (Exception ex)
+            {
+                Log(logPath, $"Nao foi possivel fechar {processName}: {ex.Message}");
+            }
+        }
+    }
+
+    private static void TryRun(string fileName, string arguments, string logPath)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            process?.WaitForExit(10000);
+        }
+        catch (Exception ex)
+        {
+            Log(logPath, $"Comando ignorado ({fileName} {arguments}): {ex.Message}");
+        }
+    }
+
+    private static string FirstExistingPath(params string[] paths)
+    {
+        return paths.FirstOrDefault(File.Exists) ?? paths.First();
     }
 
     private static UpdateManifest ParseManifest(string json)

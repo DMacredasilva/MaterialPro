@@ -33,6 +33,7 @@ public sealed partial class MaterialProDbContext : DbContext
             entity.Property(x => x.PasswordHash).HasMaxLength(255);
             entity.Property(x => x.PasswordSalt).HasMaxLength(255);
             entity.Property(x => x.Notes).HasMaxLength(500);
+            entity.Property(x => x.AllowedModules).HasMaxLength(1000);
         });
 
         modelBuilder.Entity<StoreProfile>(entity =>
@@ -446,6 +447,63 @@ public sealed partial class MaterialProDbContext : DbContext
             entity.Property(x => x.LastGeneratedAtUtc).HasColumnName("ultimo_gerado_em");
         });
 
+        modelBuilder.Entity<PrinterDevice>(entity =>
+        {
+            entity.ToTable("impressoras");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.Name).HasColumnName("nome").HasMaxLength(180);
+            entity.Property(x => x.Driver).HasColumnName("driver").HasMaxLength(180);
+            entity.Property(x => x.Port).HasColumnName("porta").HasMaxLength(120);
+            entity.Property(x => x.Kind).HasColumnName("tipo");
+            entity.Property(x => x.Status).HasColumnName("status");
+            entity.Property(x => x.IsWindowsDefault).HasColumnName("padrao_windows");
+            entity.Property(x => x.IsActive).HasColumnName("ativa");
+        });
+
+        modelBuilder.Entity<PrintConfiguration>(entity =>
+        {
+            entity.ToTable("configuracoes_impressao");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.ComputerName).HasColumnName("computador").HasMaxLength(120);
+            entity.Property(x => x.DocumentType).HasColumnName("tipo_documento");
+            entity.Property(x => x.PrinterId).HasColumnName("impressora_id");
+            entity.Property(x => x.PaperKind).HasColumnName("largura_papel");
+            entity.Property(x => x.LeftMargin).HasColumnName("margem_esquerda").HasPrecision(18, 2);
+            entity.Property(x => x.RightMargin).HasColumnName("margem_direita").HasPrecision(18, 2);
+            entity.Property(x => x.TopMargin).HasColumnName("margem_superior").HasPrecision(18, 2);
+            entity.Property(x => x.BottomMargin).HasColumnName("margem_inferior").HasPrecision(18, 2);
+            entity.Property(x => x.CutPaper).HasColumnName("cortar_papel");
+            entity.Property(x => x.OpenDrawer).HasColumnName("abrir_gaveta");
+            entity.Property(x => x.PrintLogo).HasColumnName("imprimir_logo");
+        });
+
+        modelBuilder.Entity<PrintQueueItem>(entity =>
+        {
+            entity.ToTable("filas_impressao");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.DocumentType).HasColumnName("tipo_documento");
+            entity.Property(x => x.ReferenceId).HasColumnName("referencia_id");
+            entity.Property(x => x.PrinterId).HasColumnName("impressora_id");
+            entity.Property(x => x.Status).HasColumnName("status");
+            entity.Property(x => x.Attempts).HasColumnName("tentativas");
+            entity.Property(x => x.Content).HasColumnName("conteudo").HasColumnType("longtext");
+            entity.Property(x => x.Error).HasColumnName("erro").HasMaxLength(1000);
+            entity.Property(x => x.PrintedAtUtc).HasColumnName("impresso_em");
+        });
+
+        modelBuilder.Entity<PrintLog>(entity =>
+        {
+            entity.ToTable("logs_impressao");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("usuario_id");
+            entity.Property(x => x.DocumentType).HasColumnName("tipo_documento");
+            entity.Property(x => x.ReferenceId).HasColumnName("referencia_id");
+            entity.Property(x => x.PrinterName).HasColumnName("impressora").HasMaxLength(180);
+            entity.Property(x => x.Status).HasColumnName("status");
+            entity.Property(x => x.Message).HasColumnName("mensagem").HasMaxLength(1000);
+            entity.Property(x => x.LoggedAtUtc).HasColumnName("data_log");
+        });
+
         modelBuilder.Entity<FinancialMovement>(entity =>
         {
             entity.Property(x => x.Number).HasMaxLength(60);
@@ -642,6 +700,7 @@ public sealed class MaterialProDatabaseInitializer
 
     private void EnsureCompatibilitySchema()
     {
+        AddColumnIfMissing("Users", "AllowedModules", "`AllowedModules` varchar(1000) NOT NULL DEFAULT ''");
         AddColumnIfMissing("Products", "Description", "`Description` varchar(500) NOT NULL DEFAULT ''");
         AddColumnIfMissing("Products", "Category", "`Category` varchar(120) NOT NULL DEFAULT ''");
         AddColumnIfMissing("Products", "Brand", "`Brand` varchar(120) NOT NULL DEFAULT ''");
@@ -720,6 +779,7 @@ public sealed class MaterialProDatabaseInitializer
         CreatePdvTablesIfMissing();
         CreateFinancialTablesIfMissing();
         CreateReportTablesIfMissing();
+        CreatePrintTablesIfMissing();
 
         AddIndexIfMissing("Products", "IX_Products_Barcode", "`Barcode`");
         AddIndexIfMissing("Products", "IX_Products_Category", "`Category`");
@@ -916,6 +976,82 @@ public sealed class MaterialProDatabaseInitializer
               `pasta_saida` varchar(300) NOT NULL DEFAULT '',
               `ultimo_gerado_em` datetime(6) NULL,
               PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+    }
+
+    private void CreatePrintTablesIfMissing()
+    {
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `impressoras` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `ativa` tinyint(1) NOT NULL DEFAULT 1,
+              `nome` varchar(180) NOT NULL DEFAULT '',
+              `driver` varchar(180) NOT NULL DEFAULT '',
+              `porta` varchar(120) NOT NULL DEFAULT '',
+              `tipo` int NOT NULL DEFAULT 0,
+              `status` int NOT NULL DEFAULT 1,
+              `padrao_windows` tinyint(1) NOT NULL DEFAULT 0,
+              PRIMARY KEY (`id`),
+              INDEX `IX_impressoras_nome` (`nome`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `configuracoes_impressao` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `computador` varchar(120) NOT NULL DEFAULT '',
+              `tipo_documento` int NOT NULL,
+              `impressora_id` char(36) NULL,
+              `largura_papel` int NOT NULL DEFAULT 2,
+              `margem_esquerda` decimal(18,2) NOT NULL DEFAULT 4,
+              `margem_direita` decimal(18,2) NOT NULL DEFAULT 4,
+              `margem_superior` decimal(18,2) NOT NULL DEFAULT 4,
+              `margem_inferior` decimal(18,2) NOT NULL DEFAULT 4,
+              `cortar_papel` tinyint(1) NOT NULL DEFAULT 1,
+              `abrir_gaveta` tinyint(1) NOT NULL DEFAULT 0,
+              `imprimir_logo` tinyint(1) NOT NULL DEFAULT 1,
+              PRIMARY KEY (`id`),
+              INDEX `IX_configuracoes_impressao_tipo` (`tipo_documento`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `filas_impressao` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `tipo_documento` int NOT NULL,
+              `referencia_id` char(36) NULL,
+              `impressora_id` char(36) NULL,
+              `status` int NOT NULL DEFAULT 1,
+              `tentativas` int NOT NULL DEFAULT 0,
+              `conteudo` longtext NOT NULL,
+              `erro` varchar(1000) NOT NULL DEFAULT '',
+              `impresso_em` datetime(6) NULL,
+              PRIMARY KEY (`id`),
+              INDEX `IX_filas_impressao_status` (`status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `logs_impressao` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `usuario_id` char(36) NULL,
+              `tipo_documento` int NOT NULL,
+              `referencia_id` char(36) NULL,
+              `impressora` varchar(180) NOT NULL DEFAULT '',
+              `status` int NOT NULL,
+              `mensagem` varchar(1000) NOT NULL DEFAULT '',
+              `data_log` datetime(6) NOT NULL,
+              PRIMARY KEY (`id`),
+              INDEX `IX_logs_impressao_data` (`data_log`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """);
     }

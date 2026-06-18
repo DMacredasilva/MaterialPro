@@ -1,32 +1,34 @@
-# MaterialPro Updates
+# MaterialPro
 
-Arquivos de atualizacao gerados em 2026-06-18 15:46.
+Base inicial do MaterialPro.
 
-Versao publicada: 2026.06.18.1546.
+Entradas prontas:
+- autenticação local
+- banco MySQL
+- usuário admin inicial
+- instaladores de servidor e cliente
+- script de publish dos setup
+- clientes, fornecedores, produtos e estoque
+- orçamento, vendas/PDV e caixa
+- financeiro, contas a pagar, duplicatas e baixa
+- relatórios PDF/Excel e impressão básica
+- instalador servidor com backup, updater e diagnóstico interno
+- instalador cliente com updater, diagnóstico e payload automático
+- módulo Sistema > Importação > Arquivos DBF
+- assistente de importação DBF com backup, validação e log
+- cadastro editável de nome do programa, loja, CNPJ, endereço, telefone e logo
+- nota avulsa nao fiscal com itens, PDF e controle interno
+- modulo de seguranca com auditoria, bloqueio de login, sessoes e troca de senha
+- documentos internos: cupom, recibo, orcamento, comprovante, segunda via e impressao 58mm, 80mm e A4
+- documentos sempre internos do MaterialPro, sem NFC-e, NF-e, SAT, CF-e, SEFAZ, Receita Federal, certificado digital, token CSC ou configuracao fiscal
+- cancelamento de vendas com status CANCELADA, motivo, senha de gerente, usuario, data/hora, estorno de estoque, cancelamento financeiro, log, comprovante e relatorio por periodo
 
-Inclui:
-- modulo de impressoras corrigido
-- status de atualizacao cliente/servidor
-- modulo de acesso por usuario
-- modulo de acesso remoto para suporte
-- painel principal visualmente ajustado para rotina de loja de material de construcao
-- update exe agora mira automaticamente em C:\Program Files\MaterialPro\Client ou C:\Program Files\MaterialPro\Server conforme o canal
-- central de atualizacoes mostra versao correta, conexao cliente-servidor, banco de dados e botao administrativo para forcar update
-- painel inicial mostra Cliente, Servidor, Rede/Banco e Administrador com acesso rapido para diagnosticar e forcar instalar/update
-- corrigido erro de SelectedIndex em listas vazias para nao travar ao abrir modulos
-- modulo Backup para administrador gerar ZIP com arquivos do sistema, configuracao do cliente e dump do banco MySQL
-- central de atualizacoes responsiva, com versao instalada e versao publicada no GitHub sem texto sobreposto
-- consulta de versao no GitHub com fallback para redes que bloqueiam a API
-- botao Forcar instalar/update do cliente baixa o pacote mais novo do GitHub, fecha o MaterialPro e reinstala por cima
-- modulo de cupons, recibos e documentos em portugues com modelos editaveis/importaveis pelo administrador e previa responsiva
-- tela Dados da loja com previa da logo sem distorcer e copia da imagem para pasta estavel do MaterialPro
+Publicação dos instaladores:
+- script: `build/publish-installers.ps1`
+- saída esperada:
+  - `dist/server/MaterialProServerSetup.exe`
+  - `dist/client/MaterialProClientSetup.exe`
 
-Cliente:
-- updates/client/MaterialProClientUpdate.exe
-- updates/client/update-package.zip
-
-Servidor:
-- updates/server/MaterialProServerUpdate.exe
-- updates/server/update-package.zip
-
-Para atualizar, coloque o exe e o update-package.zip correspondente na pasta de instalacao e execute o exe de update.
+Admin padrão:
+- usuário: `admin`
+- senha: `Admin@123`

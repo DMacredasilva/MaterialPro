@@ -25,6 +25,10 @@ public sealed partial class MaterialProDbContext
     public DbSet<FinancialLog> FinancialLogs => Set<FinancialLog>();
     public DbSet<ReportAuditLog> ReportAuditLogs => Set<ReportAuditLog>();
     public DbSet<ReportSchedule> ReportSchedules => Set<ReportSchedule>();
+    public DbSet<PrinterDevice> PrinterDevices => Set<PrinterDevice>();
+    public DbSet<PrintConfiguration> PrintConfigurations => Set<PrintConfiguration>();
+    public DbSet<PrintQueueItem> PrintQueueItems => Set<PrintQueueItem>();
+    public DbSet<PrintLog> PrintLogs => Set<PrintLog>();
     public DbSet<SaleCancellation> SaleCancellations => Set<SaleCancellation>();
     public DbSet<SaleReturn> SaleReturns => Set<SaleReturn>();
     public DbSet<NonFiscalNote> NonFiscalNotes => Set<NonFiscalNote>();
@@ -2585,7 +2589,23 @@ public sealed class InternalDocumentService : IInternalDocumentService
                 page.Margin(request.PaperFormat == InternalPaperFormat.A4 ? 24 : 10);
                 page.Header().Column(column =>
                 {
-                    column.Item().Text(title).SemiBold().FontSize(request.PaperFormat == InternalPaperFormat.A4 ? 18 : 14);
+                    if (TryLoadLogo(request.LogoPath) is { } logo)
+                    {
+                        column.Item().MaxHeight(request.PaperFormat == InternalPaperFormat.A4 ? 72 : 44).Image(logo).FitArea();
+                    }
+
+                    var storeName = string.IsNullOrWhiteSpace(request.StoreName) ? "MaterialPro" : request.StoreName;
+                    column.Item().Text(storeName).SemiBold().FontSize(request.PaperFormat == InternalPaperFormat.A4 ? 18 : 14);
+                    if (!string.IsNullOrWhiteSpace(request.StoreDocument) || !string.IsNullOrWhiteSpace(request.StorePhone))
+                    {
+                        column.Item().Text($"{request.StoreDocument}  {request.StorePhone}".Trim()).FontSize(9);
+                    }
+                    if (!string.IsNullOrWhiteSpace(request.StoreAddress))
+                    {
+                        column.Item().Text(request.StoreAddress).FontSize(9);
+                    }
+
+                    column.Item().PaddingTop(6).Text(title).SemiBold().FontSize(request.PaperFormat == InternalPaperFormat.A4 ? 16 : 12);
                     column.Item().Text(request.Number).FontSize(10);
                 });
                 page.Content().Column(column =>
@@ -2619,6 +2639,18 @@ public sealed class InternalDocumentService : IInternalDocumentService
         });
 
         return document.GeneratePdf();
+    }
+
+    private static byte[]? TryLoadLogo(string logoPath)
+    {
+        try
+        {
+            return string.IsNullOrWhiteSpace(logoPath) || !File.Exists(logoPath) ? null : File.ReadAllBytes(logoPath);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
 

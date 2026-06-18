@@ -278,7 +278,7 @@ internal sealed class FinancialDocumentDialog : Form
         Height = 330;
         StartPosition = FormStartPosition.CenterParent;
         _method.Items.AddRange(["DINHEIRO", "PIX", "CARTAO", "BOLETO", "TRANSFERENCIA", "CHEQUE"]);
-        _method.SelectedIndex = 0;
+        UiKit.SelectIfAvailable(_method, 0);
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 7, Padding = new Padding(12) };
         foreach (var control in new Control[] { _number, _person, _description, _amount, _due, _method })
         {
@@ -315,7 +315,7 @@ internal sealed class FinancialSettlementDialog : Form
         Height = 360;
         StartPosition = FormStartPosition.CenterParent;
         _method.Items.AddRange(["DINHEIRO", "PIX", "CARTAO_DEBITO", "CARTAO_CREDITO", "BOLETO", "TRANSFERENCIA", "CHEQUE"]);
-        _method.SelectedIndex = 0;
+        UiKit.SelectIfAvailable(_method, 0);
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 8, Padding = new Padding(12) };
         foreach (var control in new Control[] { Label("Valor da baixa"), _amount, Label("Juros"), _interest, Label("Multa"), _fine, Label("Desconto"), _discount, _method, _obs })
         {

@@ -276,10 +276,7 @@ public sealed class ProductsForm : Form
             }
         }
 
-        if (_supplierBox.Items.Count > 0)
-        {
-            _supplierBox.SelectedIndex = 0;
-        }
+        UiKit.SelectIfAvailable(_supplierBox, 0);
     }
 
     private static TextBox TextField(string text = "") => new() { Dock = DockStyle.Top, Text = text };

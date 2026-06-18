@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.ComponentModel;
 using MaterialPro.Infrastructure;
 
 namespace MaterialPro.UI;
@@ -9,6 +10,10 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
+        System.Windows.Forms.Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        System.Windows.Forms.Application.ThreadException += OnThreadException;
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+
         if (AutoUpdateRunner.StartUpdateAndExitIfAvailable("client"))
         {
             return;
@@ -30,6 +35,39 @@ internal static class Program
                 }
             }
         }
+    }
+
+    private static void OnThreadException(object sender, ThreadExceptionEventArgs e)
+    {
+        if (IsSelectedIndexError(e.Exception))
+        {
+            MessageBox.Show(
+                "Uma lista abriu sem opcoes carregadas. O MaterialPro bloqueou o erro para voce continuar usando.\r\n\r\nAtualize o cliente pelo modulo Atualizacoes para remover este aviso.",
+                "MaterialPro - lista sem opcao",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        MessageBox.Show(
+            $"Ocorreu um erro no MaterialPro:\r\n\r\n{e.Exception.Message}",
+            "MaterialPro",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Error);
+    }
+
+    private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception exception && IsSelectedIndexError(exception))
+        {
+            return;
+        }
+    }
+
+    private static bool IsSelectedIndexError(Exception exception)
+    {
+        return exception is InvalidEnumArgumentException or ArgumentOutOfRangeException
+            || exception.Message.Contains("SelectedIndex", StringComparison.OrdinalIgnoreCase);
     }
 }
 

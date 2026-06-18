@@ -49,7 +49,54 @@ public enum Permission
     ExportStock,
     ViewFinancialHistory,
     ManageSettings,
-    ViewReports
+    ViewReports,
+    ConfigurePrinters,
+    PrintDocument,
+    ReprintDocument,
+    ViewPrintQueue,
+    CancelPrintQueueItem
+}
+
+public static class SystemModules
+{
+    public const string Products = "products";
+    public const string Stock = "stock";
+    public const string Customers = "customers";
+    public const string Suppliers = "suppliers";
+    public const string Pdv = "pdv";
+    public const string Cash = "cash";
+    public const string Financial = "financial";
+    public const string Reports = "reports";
+    public const string Updates = "updates";
+    public const string Backup = "backup";
+    public const string UserAccess = "user-access";
+    public const string RemoteSupport = "remote-support";
+    public const string InternalDocuments = "internal-documents";
+    public const string Printers = "printers";
+    public const string Cancellation = "cancellation";
+    public const string NonFiscalNote = "non-fiscal-note";
+    public const string DbfImport = "dbf-import";
+    public const string Security = "security";
+    public const string StoreProfile = "store-profile";
+
+    public static IReadOnlyList<string> All { get; } =
+    [
+        Products, Stock, Customers, Suppliers, Pdv, Cash, Financial, Reports, Updates, Backup,
+        UserAccess, RemoteSupport, InternalDocuments, Printers, Cancellation, NonFiscalNote,
+        DbfImport, Security, StoreProfile
+    ];
+
+    public static IReadOnlyCollection<string> DefaultsFor(UserRole role)
+    {
+        return role switch
+        {
+            UserRole.Admin => All.ToArray(),
+            UserRole.Manager => [Products, Stock, Customers, Suppliers, Pdv, Cash, Financial, Reports, InternalDocuments, Printers, Cancellation, NonFiscalNote, DbfImport, StoreProfile],
+            UserRole.Cashier => [Customers, Pdv, Cash, InternalDocuments, Cancellation, NonFiscalNote],
+            UserRole.Stock => [Products, Stock, Suppliers, Reports, DbfImport],
+            _ => []
+        };
+    }
 }
 
 public static class RolePermissions
@@ -81,6 +128,21 @@ public sealed class AppUser : EntityBase
     public int FailedLoginCount { get; set; }
     public DateTime? LockedUntilUtc { get; set; }
     public DateTime? PasswordChangedAtUtc { get; set; }
+    public string AllowedModules { get; set; } = string.Empty;
+
+    public IReadOnlyCollection<string> EffectiveModules()
+    {
+        if (Role == UserRole.Admin || string.IsNullOrWhiteSpace(AllowedModules))
+        {
+            return SystemModules.DefaultsFor(Role);
+        }
+
+        return AllowedModules
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(SystemModules.All.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
 }
 
 public sealed class StoreProfile : EntityBase
@@ -612,6 +674,97 @@ public sealed class ReportSchedule : EntityBase
     public string Frequency { get; set; } = "Diario";
     public string OutputFolder { get; set; } = string.Empty;
     public DateTime? LastGeneratedAtUtc { get; set; }
+}
+
+public enum PrinterKind
+{
+    Unknown = 0,
+    Thermal58 = 1,
+    Thermal80 = 2,
+    A4 = 3,
+    Label = 4
+}
+
+public enum PrinterDeviceStatus
+{
+    Online = 1,
+    Offline = 2,
+    Paused = 3,
+    Error = 4,
+    NoPaper = 5
+}
+
+public enum PrintDocumentType
+{
+    SaleReceipt = 1,
+    SecondCopy = 2,
+    Budget = 3,
+    PaymentReceipt = 4,
+    ReturnProof = 5,
+    CancellationProof = 6,
+    CashOpening = 7,
+    CashWithdrawal = 8,
+    CashSupply = 9,
+    CashClosing = 10,
+    A4Report = 11,
+    ProductLabel = 12,
+    TestPage = 13
+}
+
+public enum PrintQueueStatus
+{
+    Pending = 1,
+    Printed = 2,
+    Error = 3,
+    Cancelled = 4
+}
+
+public sealed class PrinterDevice : EntityBase
+{
+    public string Name { get; set; } = string.Empty;
+    public string Driver { get; set; } = string.Empty;
+    public string Port { get; set; } = string.Empty;
+    public PrinterKind Kind { get; set; } = PrinterKind.Unknown;
+    public PrinterDeviceStatus Status { get; set; } = PrinterDeviceStatus.Online;
+    public bool IsWindowsDefault { get; set; }
+}
+
+public sealed class PrintConfiguration : EntityBase
+{
+    public string ComputerName { get; set; } = string.Empty;
+    public PrintDocumentType DocumentType { get; set; } = PrintDocumentType.SaleReceipt;
+    public Guid? PrinterId { get; set; }
+    public PrinterKind PaperKind { get; set; } = PrinterKind.Thermal80;
+    public decimal LeftMargin { get; set; } = 4;
+    public decimal RightMargin { get; set; } = 4;
+    public decimal TopMargin { get; set; } = 4;
+    public decimal BottomMargin { get; set; } = 4;
+    public bool CutPaper { get; set; } = true;
+    public bool OpenDrawer { get; set; }
+    public bool PrintLogo { get; set; } = true;
+}
+
+public sealed class PrintQueueItem : EntityBase
+{
+    public PrintDocumentType DocumentType { get; set; }
+    public Guid? ReferenceId { get; set; }
+    public Guid? PrinterId { get; set; }
+    public PrintQueueStatus Status { get; set; } = PrintQueueStatus.Pending;
+    public int Attempts { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public string Error { get; set; } = string.Empty;
+    public DateTime? PrintedAtUtc { get; set; }
+}
+
+public sealed class PrintLog : EntityBase
+{
+    public Guid? UserId { get; set; }
+    public PrintDocumentType DocumentType { get; set; }
+    public Guid? ReferenceId { get; set; }
+    public string PrinterName { get; set; } = string.Empty;
+    public PrintQueueStatus Status { get; set; } = PrintQueueStatus.Pending;
+    public string Message { get; set; } = string.Empty;
+    public DateTime LoggedAtUtc { get; set; } = DateTime.UtcNow;
 }
 
 public sealed class SaleReturn : EntityBase

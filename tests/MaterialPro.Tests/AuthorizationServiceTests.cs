@@ -15,4 +15,25 @@ public sealed class AuthorizationServiceTests
         Assert.True(authz.HasPermission(user, Permission.ManageUsers));
         Assert.True(authz.HasPermission(user, Permission.ViewReports));
     }
+
+    [Fact]
+    public void User_EffectiveModules_Uses_Custom_Module_List()
+    {
+        var user = new AppUser
+        {
+            Role = UserRole.Cashier,
+            AllowedModules = $"{SystemModules.Pdv},{SystemModules.Cash}"
+        };
+
+        Assert.Equal([SystemModules.Pdv, SystemModules.Cash], user.EffectiveModules());
+    }
+
+    [Fact]
+    public void User_EffectiveModules_Falls_Back_To_Role_Defaults()
+    {
+        var user = new AppUser { Role = UserRole.Stock };
+
+        Assert.Contains(SystemModules.Stock, user.EffectiveModules());
+        Assert.DoesNotContain(SystemModules.Cash, user.EffectiveModules());
+    }
 }
