@@ -1,0 +1,6 @@
+{
+  "MySqlRootPassword": "",
+  "ServerInstallRoot": "C:\\Program Files\\MaterialPro\\Server",
+  "ClientInstallRoot": "C:\\Program Files\\MaterialPro\\Client",
+  "ClientServerAddress": "127.0.0.1"
+}

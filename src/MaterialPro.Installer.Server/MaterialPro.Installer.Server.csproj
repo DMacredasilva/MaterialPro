@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <AssemblyName>MaterialProServerSetup</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MaterialPro.Application\MaterialPro.Application.csproj" />
+    <ProjectReference Include="..\MaterialPro.Infrastructure\MaterialPro.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\dist\server\payload\server\**\*">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <TargetPath>payload\server\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+    </Content>
+    <Content Include="..\..\dist\client\payload\client\**\*">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <TargetPath>payload\client\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+    </Content>
+  </ItemGroup>
+</Project>
