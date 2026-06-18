@@ -572,6 +572,48 @@ public sealed class FinancialLog : EntityBase
     public string Reason { get; set; } = string.Empty;
 }
 
+public enum ReportGroup
+{
+    Sales = 1,
+    Cash = 2,
+    Stock = 3,
+    Financial = 4,
+    Customers = 5,
+    Products = 6,
+    Suppliers = 7,
+    Returns = 8,
+    Cancellations = 9,
+    System = 10
+}
+
+public enum ReportOutputFormat
+{
+    Preview = 1,
+    Pdf = 2,
+    Excel = 3,
+    Print = 4
+}
+
+public sealed class ReportAuditLog : EntityBase
+{
+    public Guid? UserId { get; set; }
+    public string ReportKey { get; set; } = string.Empty;
+    public string ReportTitle { get; set; } = string.Empty;
+    public string Filters { get; set; } = string.Empty;
+    public ReportOutputFormat Format { get; set; } = ReportOutputFormat.Preview;
+    public DateTime GeneratedAtUtc { get; set; } = DateTime.UtcNow;
+    public string MachineName { get; set; } = string.Empty;
+    public string IpAddress { get; set; } = string.Empty;
+}
+
+public sealed class ReportSchedule : EntityBase
+{
+    public string ReportKey { get; set; } = string.Empty;
+    public string Frequency { get; set; } = "Diario";
+    public string OutputFolder { get; set; } = string.Empty;
+    public DateTime? LastGeneratedAtUtc { get; set; }
+}
+
 public sealed class SaleReturn : EntityBase
 {
     public Guid SaleId { get; set; }

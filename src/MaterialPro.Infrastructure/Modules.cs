@@ -23,6 +23,8 @@ public sealed partial class MaterialProDbContext
     public DbSet<FinancialSettlement> FinancialSettlements => Set<FinancialSettlement>();
     public DbSet<FinancialCategory> FinancialCategories => Set<FinancialCategory>();
     public DbSet<FinancialLog> FinancialLogs => Set<FinancialLog>();
+    public DbSet<ReportAuditLog> ReportAuditLogs => Set<ReportAuditLog>();
+    public DbSet<ReportSchedule> ReportSchedules => Set<ReportSchedule>();
     public DbSet<SaleCancellation> SaleCancellations => Set<SaleCancellation>();
     public DbSet<SaleReturn> SaleReturns => Set<SaleReturn>();
     public DbSet<NonFiscalNote> NonFiscalNotes => Set<NonFiscalNote>();

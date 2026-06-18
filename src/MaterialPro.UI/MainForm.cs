@@ -44,6 +44,7 @@ public sealed class MainForm : Form
     private readonly ICashService _cashService;
     private readonly ICashReportService _cashReportService;
     private readonly IFinancialService _financialService;
+    private readonly IReportsCenterService _reportsCenterService;
     private readonly IPrintService _printService;
     private readonly MaterialProDbContext _db;
     private readonly IDbfImportService _dbfImportService;
@@ -90,6 +91,7 @@ public sealed class MainForm : Form
         _cashService = new CashService(_db, hasher, _securityService);
         _cashReportService = new CashReportService(_db);
         _financialService = new FinancialService(_db);
+        _reportsCenterService = new ReportsCenterService(_db);
         _dbfImportService = new DbfImportService(_db);
         new MaterialProDatabaseInitializer(_db, _authService).EnsureCreated();
 
@@ -253,6 +255,13 @@ public sealed class MainForm : Form
         {
             if (_currentUser is null) return;
             using var form = new FinancialForm(_financialService, _currentUser);
+            form.ShowDialog(this);
+            ShowDashboard();
+        }));
+        modules.Controls.Add(ModuleTile("Relatorios", "Central com vendas, caixa, estoque, financeiro e sistema.", "REL", Color.FromArgb(90, 84, 154), () =>
+        {
+            if (_currentUser is null) return;
+            using var form = new ReportsCenterForm(_reportsCenterService, _currentUser);
             form.ShowDialog(this);
             ShowDashboard();
         }));

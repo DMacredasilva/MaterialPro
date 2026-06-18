@@ -422,6 +422,30 @@ public sealed partial class MaterialProDbContext : DbContext
             entity.Property(x => x.Reason).HasColumnName("motivo").HasMaxLength(500);
         });
 
+        modelBuilder.Entity<ReportAuditLog>(entity =>
+        {
+            entity.ToTable("relatorios_logs");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.UserId).HasColumnName("usuario_id");
+            entity.Property(x => x.ReportKey).HasColumnName("relatorio").HasMaxLength(120);
+            entity.Property(x => x.ReportTitle).HasColumnName("titulo").HasMaxLength(180);
+            entity.Property(x => x.Filters).HasColumnName("filtros").HasMaxLength(500);
+            entity.Property(x => x.Format).HasColumnName("formato");
+            entity.Property(x => x.GeneratedAtUtc).HasColumnName("data_hora");
+            entity.Property(x => x.MachineName).HasColumnName("maquina").HasMaxLength(120);
+            entity.Property(x => x.IpAddress).HasColumnName("ip").HasMaxLength(60);
+        });
+
+        modelBuilder.Entity<ReportSchedule>(entity =>
+        {
+            entity.ToTable("relatorios_agendamentos");
+            entity.Property(x => x.Id).HasColumnName("id");
+            entity.Property(x => x.ReportKey).HasColumnName("relatorio").HasMaxLength(120);
+            entity.Property(x => x.Frequency).HasColumnName("frequencia").HasMaxLength(40);
+            entity.Property(x => x.OutputFolder).HasColumnName("pasta_saida").HasMaxLength(300);
+            entity.Property(x => x.LastGeneratedAtUtc).HasColumnName("ultimo_gerado_em");
+        });
+
         modelBuilder.Entity<FinancialMovement>(entity =>
         {
             entity.Property(x => x.Number).HasMaxLength(60);
@@ -695,6 +719,7 @@ public sealed class MaterialProDatabaseInitializer
         CreateStockTablesIfMissing();
         CreatePdvTablesIfMissing();
         CreateFinancialTablesIfMissing();
+        CreateReportTablesIfMissing();
 
         AddIndexIfMissing("Products", "IX_Products_Barcode", "`Barcode`");
         AddIndexIfMissing("Products", "IX_Products_Category", "`Category`");
@@ -857,6 +882,42 @@ public sealed class MaterialProDatabaseInitializer
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """);
         SeedFinancialCategories();
+    }
+
+    private void CreateReportTablesIfMissing()
+    {
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `relatorios_logs` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `usuario_id` char(36) NULL,
+              `relatorio` varchar(120) NOT NULL DEFAULT '',
+              `titulo` varchar(180) NOT NULL DEFAULT '',
+              `filtros` varchar(500) NOT NULL DEFAULT '',
+              `formato` int NOT NULL DEFAULT 1,
+              `data_hora` datetime(6) NOT NULL,
+              `maquina` varchar(120) NOT NULL DEFAULT '',
+              `ip` varchar(60) NOT NULL DEFAULT '',
+              PRIMARY KEY (`id`),
+              INDEX `IX_relatorios_logs_relatorio` (`relatorio`),
+              INDEX `IX_relatorios_logs_data_hora` (`data_hora`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
+        _db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS `relatorios_agendamentos` (
+              `id` char(36) NOT NULL,
+              `CreatedAtUtc` datetime(6) NOT NULL,
+              `UpdatedAtUtc` datetime(6) NULL,
+              `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+              `relatorio` varchar(120) NOT NULL DEFAULT '',
+              `frequencia` varchar(40) NOT NULL DEFAULT '',
+              `pasta_saida` varchar(300) NOT NULL DEFAULT '',
+              `ultimo_gerado_em` datetime(6) NULL,
+              PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """);
     }
 
     private void SeedFinancialCategories()

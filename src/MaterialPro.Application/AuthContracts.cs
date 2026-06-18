@@ -176,6 +176,21 @@ public sealed record FinancialMovementRequest(string Number, MaterialPro.Domain.
 public sealed record SaleCancellationRequest(Guid SaleId, string Reason, Guid UserId, string ManagerPassword, string Observation);
 public sealed record SaleReturnRequest(Guid SaleId, string Reason, decimal TotalReturnedAmount, string ProcessedBy);
 public sealed record ReportRangeRequest(DateTime FromUtc, DateTime ToUtc);
+public sealed record ReportFilterRequest(
+    string ReportKey,
+    DateTime? FromUtc = null,
+    DateTime? ToUtc = null,
+    Guid? CustomerId = null,
+    Guid? SupplierId = null,
+    Guid? ProductId = null,
+    Guid? UserId = null,
+    string Status = "",
+    string Term = "");
+public sealed record ReportDefinition(string Key, string Title, MaterialPro.Domain.ReportGroup Group, bool FinancialRestricted, bool SupportsThermalSummary);
+public sealed record ReportRow(IReadOnlyDictionary<string, object?> Values);
+public sealed record ReportResult(ReportDefinition Definition, ReportFilterRequest Filters, IReadOnlyList<string> Columns, IReadOnlyList<ReportRow> Rows, IReadOnlyDictionary<string, decimal> Totals);
+public sealed record ReportsDashboardSummary(decimal TotalSales, decimal TotalReceived, decimal TotalReceivable, decimal TotalPayable, decimal GrossProfit, decimal StockValue, IReadOnlyList<ProductSalesSummary> BestProducts, IReadOnlyList<CustomerPurchaseSummary> BestCustomers);
+public sealed record CustomerPurchaseSummary(Guid CustomerId, string Name, decimal TotalAmount, int SaleCount);
 public sealed record SaleCancellationSummary(Guid Id, Guid SaleId, string ReceiptNumber, string Reason, string UserName, DateTime CancelledAtUtc, decimal TotalAmount, string Observation);
 public enum InternalDocumentKind
 {
@@ -455,6 +470,18 @@ public interface IReportService
     byte[] ExportFinancialPdf(ReportRangeRequest request);
     byte[] ExportFinancialExcel(ReportRangeRequest request);
     byte[] ExportDuplicateSecondCopyPdf(Guid duplicateId);
+}
+
+public interface IReportsCenterService
+{
+    IReadOnlyList<ReportDefinition> Catalog();
+    ReportResult Generate(ReportFilterRequest request, AppUser user);
+    ReportsDashboardSummary Dashboard(ReportFilterRequest request, AppUser user);
+    byte[] ExportPdf(ReportFilterRequest request, AppUser user);
+    byte[] ExportExcel(ReportFilterRequest request, AppUser user);
+    byte[] PrintSummary(ReportFilterRequest request, AppUser user, InternalPaperFormat format = InternalPaperFormat.A4);
+    IReadOnlyList<ReportAuditLog> Logs();
+    ReportSchedule Schedule(string reportKey, string frequency, string outputFolder);
 }
 
 public interface IPrintService
